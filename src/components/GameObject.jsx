@@ -638,14 +638,5 @@ function areEqual(prev, next) {
 
 export default React.memo(GameObject, areEqual);
 
-// ============================================================================
-// ★ GLBプリロード：hasModelフラグのあるRoleを起動時に全部先読み
-// 初回生成時の「モデル読み込みチラつき・待機」をほぼゼロにする
-// ============================================================================
-Object.entries(SEMANTIC_PREFABS).forEach(([role, p]) => {
-  if (!p.hasModel) return;
-  for (let v = 1; v <= (p.variants || 1); v++) {
-    useGLTF.preload(getModelPath(role, v));
-  }
-});
-useGLTF.preload('/dummy.glb');
+// useGLTF loads and caches each model when the scene actually uses it. Eagerly
+// loading the entire catalog downloads unrelated models on public web visits.
