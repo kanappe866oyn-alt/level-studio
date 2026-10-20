@@ -2,6 +2,14 @@
 
 凹凸のある地形・階段・坂・上下の経路を生成し、既存モデルの配置、編集、一人称の歩行確認、JSON保存、GLB出力ができる試作ツールです。
 
+## 公開先（2026-10-20）
+
+- [Web版を開く](https://level-studio-world.netlify.app)
+- [Windows 0.1.33のダウンロード](https://github.com/kanappe866oyn-alt/level-studio/releases/tag/v0.1.33)
+- [公開ソース](https://github.com/kanappe866oyn-alt/level-studio)
+
+現在のWeb版はNetlify CLIから手動で公開しています。GitHubへ変更を送るだけではサイトへ自動反映されません。Windows版は検証済みの0.1.33で、今回のWebトップ画面とモデルの必要時読み込みは再同梱していません。
+
 ## 使い分け
 
 ブラウザ版はURLを開いて試すための入口。Windows版はモデルと構造ルール生成を同梱し、開発サーバー不要で起動できます。構造ルール生成・編集・歩行・保存はオフライン対応。クラウドAIには両方とも接続とAPI設定が必要です。アプリだからAI精度や速度が上がるという仕様ではありません。
@@ -31,7 +39,7 @@ Web版はNetlify、WindowsのZIPはGitHub Releasesで配布する構成です。
 
 1. GitHubに新しいリポジトリを作り、公開用ソースフォルダの内容を入れます。元の制作フォルダ全体をアップロードしないでください。公開用ソースは必要なファイルを許可リストで複製し、APIキー、研究結果、学習データ、作業ログ、保存作品を含めていません。
 2. GitHub Releasesに、確認済みの `LevelStudio-0.1.33-win-x64.zip` を添付します。ソースのリポジトリにはアプリのZIPやreleasesフォルダを入れません。
-3. Releaseの実際のZIPダウンロードURLを、Netlifyの環境変数 `VITE_DESKTOP_DOWNLOAD_URL` に設定します。HTTPSのZIP URLが必要です。これは公開用リンクであり、秘密情報ではありません。
+3. Releaseの実際のZIPダウンロードURLを、`src/data/desktopRelease.json` の `url`、またはNetlifyの環境変数 `VITE_DESKTOP_DOWNLOAD_URL` に設定します。HTTPSのZIP URLが必要です。これは公開用リンクであり、秘密情報ではありません。
 4. Netlifyでそのリポジトリを選び、ビルド `npm run build`、公開先 `dist` としてデプロイします。設定は `netlify.toml` に含まれます。
 5. 公開ページの画像・サンプル生成・Worker・モデル読み込み・JSON保存・GLB出力とWindowsのダウンロードを確認します。
 
