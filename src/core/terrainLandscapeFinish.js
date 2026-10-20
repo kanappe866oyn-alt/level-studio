@@ -2,6 +2,8 @@ import { getModelDefault } from './modelCatalog.js';
 import { getBounds, getCollisionParts, isWalkable, surfaceTop } from './spatialGeometry.js';
 import { terrainModelFit } from './spatialTerrainModels.js';
 import { segmentHitsBox, spatialEyeSamples } from './spatialSightlines.js';
+import { isRockMountain } from './terrainRockMountains.js';
+import { mountainSettlementClearance } from './mountainSettlementFit.js';
 
 const prefix = 'sp_landscape_detail_';
 export const isLandscapeDetail = o => o.id.startsWith(prefix) && !o.customModelUrl && o.modelGrounding?.surfaceId === 'sp_terrain_surround' &&
@@ -33,6 +35,7 @@ export function finishTerrainLandscape(stage) {
   const floors = original.filter(o => isWalkable(o) && ![soil.id, ground.id].includes(o.id));
   const obstacles = original.filter(o => !['landform', 'ground', 'tree', 'plant', 'pit'].includes(o.role)).map(getBounds);
   const trees = original.filter(o => o.role === 'tree');
+  const mountains = stage.design_rationale.spatial_design.variation.version >= 35 ? original.filter(isRockMountain) : [];
   const anchors = original.filter(o => ['tree', 'rock', 'cliff'].includes(o.role) && o.modelGrounding?.surfaceId === soil.id);
   const blockers = objects.flatMap(getCollisionParts), rays = [];
   for (const line of stage.plan.requirements.sightlines) {
@@ -55,6 +58,7 @@ export function finishTerrainLandscape(stage) {
         modelDimensions: { path: ref.path, size: [...ref.bounds.size], defaultScale: ref.scale }, modelGrounding: { surfaceId: soil.id, inset } };
       const fit = terrainModelFit(object, soil, floors), bounds = getBounds(object);
       if (!fit.passed || obstacles.some(b => overlap(bounds, b)) || details.some(o => overlap(bounds, getBounds(o))) ||
+        mountains.some(m => !mountainSettlementClearance(m, [object], 0.15).passed) ||
         trees.some(o => Math.hypot(x - o.pos[0], z - o.pos[2]) < 0.9) || rays.some(([a, b]) => segmentHitsBox(a, b, object))) continue;
       // terrainModelFit checks the full base of stones, unlike plant root zones.
       details.push(object); checks.push({ id: object.id, anchor: anchor.id, ...fit });

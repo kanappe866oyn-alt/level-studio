@@ -8,6 +8,8 @@
 - [Windows 0.1.33のダウンロード](https://github.com/kanappe866oyn-alt/level-studio/releases/tag/v0.1.33)
 - [公開ソース](https://github.com/kanappe866oyn-alt/level-studio)
 
+Web版の新規立体集落はルール35です。岩山の実形状を調べて土台へ寄せ、建物・通路・植栽への侵入を避けます。
+
 現在のWeb版はNetlify CLIから手動で公開しています。GitHubへ変更を送るだけではサイトへ自動反映されません。Windows版は検証済みの0.1.33で、今回のWebトップ画面とモデルの必要時読み込みは再同梱していません。
 
 ## 使い分け

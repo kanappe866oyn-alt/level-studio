@@ -2,6 +2,8 @@ import { getModelDefault } from './modelCatalog.js';
 import { getBounds, getCollisionParts, isWalkable, surfaceTop, worldXZ, WALKING } from './spatialGeometry.js';
 import { terrainModelFit } from './spatialTerrainModels.js';
 import { segmentHitsBox, spatialEyeSamples } from './spatialSightlines.js';
+import { isRockMountain } from './terrainRockMountains.js';
+import { mountainSettlementClearance } from './mountainSettlementFit.js';
 
 const prefix = 'sp_outer_garden_';
 const overlap = (a, b, gap = 0.25) => a.minX < b.maxX + gap && a.maxX > b.minX - gap && a.minZ < b.maxZ + gap && a.maxZ > b.minZ - gap;
@@ -32,6 +34,7 @@ export function placeTerrainRockWoodland(stage, owns) {
   if (!terrain) return stage;
   const floors = original.filter(o => isWalkable(o) && !['sp_ground', terrain.id].includes(o.id));
   const occupied = original.filter(o => !['ground', 'landform', 'pit'].includes(o.role)).map(getBounds);
+  const mountains = stage.design_rationale.spatial_design.variation.version >= 35 ? original.filter(isRockMountain) : [];
   const blockers = original.flatMap(getCollisionParts), rays = [];
   for (const line of stage.plan.requirements.sightlines) {
     const from = stage.areas.find(a => a.id === line.from), to = stage.areas.find(a => a.id === line.to);
@@ -59,6 +62,7 @@ export function placeTerrainRockWoodland(stage, owns) {
     if (!fit.passed || original.some(o => o.id === object.id)) return false;
     const b = getBounds(object);
     if (occupied.some(other => overlap(b, other))) return false;
+    if (mountains.some(m => !mountainSettlementClearance(m, [object], 0.15).passed)) return false;
     // Crowns may interleave within a grove. Trunks stay apart; all native bounds
     // remain excluded from authored floors and protected sight rays.
     if (additions.some(other => object.role === 'tree' && other.role === 'tree'
