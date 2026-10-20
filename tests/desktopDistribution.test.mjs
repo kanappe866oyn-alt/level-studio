@@ -5,10 +5,11 @@ import release from '../src/data/desktopRelease.json' with { type: 'json' };
 import { desktopDownloadPlugin } from '../tools/desktop_download_plugin.mjs';
 
 test('unpublished public sites have no invented download; local preview serves only the known archive', () => {
-  assert.equal(desktopDownload({ hostname: 'level-studio.netlify.app' }).available, false);
-  assert.equal(desktopDownload({ hostname: 'level-studio.netlify.app' }).url, '');
-  assert.equal(desktopDownload({ hostname: '127.0.0.1' }).url, `/downloads/${release.fileName}`);
-  assert.equal(desktopDownload({ hostname: 'localhost.example.com' }).available, false);
+  const releaseInfo = { ...release, url: '' };
+  assert.equal(desktopDownload({ hostname: 'level-studio.netlify.app', releaseInfo }).available, false);
+  assert.equal(desktopDownload({ hostname: 'level-studio.netlify.app', releaseInfo }).url, '');
+  assert.equal(desktopDownload({ hostname: '127.0.0.1', releaseInfo }).url, `/downloads/${release.fileName}`);
+  assert.equal(desktopDownload({ hostname: 'localhost.example.com', releaseInfo }).available, false);
 });
 
 test('local download middleware registers without returning Connect as a Vite post-hook and does not expose arbitrary paths', () => {
