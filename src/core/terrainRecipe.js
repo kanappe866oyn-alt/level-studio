@@ -1,4 +1,4 @@
-export const TERRAIN_VERSION = 35;
+export const TERRAIN_VERSION = 36;
 export const TERRAIN_FAMILIES = [
   { id: 'market', title: '市場と路地', description: '広い中庭と市場を、低地の路地と尾根の道で結びます。' },
   { id: 'terraces', title: '段丘の集落', description: '階段と坂を通り、低地から2・4・6mの広場へ登ります。' },

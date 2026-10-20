@@ -1,6 +1,6 @@
 // src/core/assetPrompt.js
-import ASSET_CATALOG from '../data/asset_catalog.json';
-import { getModelDefault, usesNativeSizing } from './modelCatalog';
+import ASSET_CATALOG from '../data/asset_catalog.json' with { type: 'json' };
+import { getModelDefault, usesNativeSizing } from './modelCatalog.js';
 import ASSETS from '../assets.json' with { type: 'json' };
 
 export function buildAssetKnowledgeText(roles = []) {

@@ -3,6 +3,7 @@ import { DEFAULT_SPATIAL_PLAN, SPATIAL_GRID, independentRouteCount, validateSpat
 import { placeTerrainGardenClusters } from './terrainGardenClusters.js';
 import { placeTerrainOuterGardens } from './terrainOuterGardens.js';
 import { finishTerrainLandscape } from './terrainLandscapeFinish.js';
+import { placeStreetTreeGardens } from './streetTreeGardens.js';
 import { finishTerrainDistrictColors } from './terrainDistrictColors.js';
 import { placeTerrainLongSightScreens } from './terrainLongSightScreens.js';
 import { analyzeWalkability } from './walkability.js';
@@ -338,7 +339,7 @@ export function finishSpatialStageWithReport(stage) {
       finished = placeTerrainGardenClusters(finished);
       finished.design_rationale.spatial_design.terrain_gardens = finished.gardenClusters;
     }
-    finished = finishTerrainLandscape(finishTerrainDistrictColors(placeTerrainOuterGardens(placeTerrainLongSightScreens(finished))));
+    finished = placeStreetTreeGardens(finishTerrainLandscape(finishTerrainDistrictColors(placeTerrainOuterGardens(placeTerrainLongSightScreens(finished)))));
     const after = inspectSpatialStage(finished);
     if (after.issues.length || JSON.stringify(after.sightlines) !== JSON.stringify(before.sightlines) || JSON.stringify(inspectConnectionWalking(finished)) !== JSON.stringify(walking)) throw new Error('モデル配置で歩行・指定視線が変わるため採用できませんでした。');
     finished.design_rationale.spatial_design.terrain_models.navigation = after.navigation.status;
