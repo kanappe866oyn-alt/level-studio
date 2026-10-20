@@ -1,0 +1,9 @@
+/* The page shell is loaded before the lazy editor styles. Each screen scrolls internally. */
+* { box-sizing: border-box; }
+html, body, #root { margin: 0; width: 100%; height: 100%; overflow: hidden; }
+body { background: #10191f; color: #f0f4f7; font-family: 'Segoe UI', 'Hiragino Sans', 'Yu Gothic UI', sans-serif; }
+.editor-recovery { max-width: 640px; height: 100%; overflow: auto; margin: 0 auto; padding: 40px 24px; line-height: 1.7; }
+.editor-recovery h1 { font-size: 24px; line-height: 1.4; }
+.editor-recovery-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
+.editor-recovery-actions button { min-height: 44px; padding: 10px 18px; border: 1px solid #7293a9; border-radius: 8px; background: #23495f; color: #fff; font: inherit; cursor: pointer; }
+.editor-recovery-actions button:focus-visible { outline: 3px solid #80d8fa; outline-offset: 3px; }

@@ -1,0 +1,87 @@
+{
+  "SEMANTIC_PREFABS": {
+    "landform": { "name": "Prefab_Landform", "color": "#6f9167", "variants": 1, "materials": 1 },
+    "terrain":       { "name": "Prefab_Terrain",    "color": "#228b22", "variants": 4, "materials": 3, "hasModel": true, "floorLike": true },
+    "ground":        { "name": "Prefab_Ground",     "color": "#556b2f", "variants": 1, "materials": 5, "tiled": true, "floorLike": true },
+    "platform":      { "name": "Prefab_Platform",   "color": "#8b4513", "variants": 3, "materials": 2,"hasModel": true, "groundSnap": false },
+    "slope":         { "name": "Prefab_Slope",      "color": "#6b8e23", "variants": 1, "materials": 1, "hasModel": true },
+    "cliff":         { "name": "Prefab_Cliff",      "color": "#696969", "variants": 1, "materials": 2, "hasModel": true },
+    "pit":           { "name": "Prefab_Pit",        "color": "#000000", "variants": 1, "floorLike": true },
+    "wall":          { "name": "Prefab_Wall",       "color": "#808080", "variants": 1, "materials": 4, "tiled": true, "groundSnap": true },
+    "room":          { "name": "Prefab_Room",       "color": "#dda0dd", "variants": 1, "opacity": 0.3 },
+    "corridor":      { "name": "Prefab_Corridor",   "color": "#d2b48c", "variants": 1, "flatHeight": 0.5 },
+    "door":          { "name": "Prefab_Door",       "color": "#8b4513", "variants": 1, "groundSnap": true },
+    "window":        { "name": "Prefab_Window",     "color": "#add8e6", "variants": 1, "opacity": 0.4 },
+    "boundary":      { "name": "Prefab_Boundary",   "color": "#ff0000", "variants": 1, "opacity": 0.1 },
+    "cover":         { "name": "Prefab_Cover",      "color": "#8a9a86", "variants": 9, "materials": 6, "hasModel": true, "groundSnap": true },
+    "tower":         { "name": "Prefab_Tower",      "color": "#b22222", "variants": 4, "materials": 4, "hasModel": true, "groundSnap": true },
+    "path":          { "name": "Prefab_Path",       "color": "#333333", "variants": 1, "forceSpline": true },
+    "climb":         { "name": "Prefab_Climb",      "color": "#ff8c00", "variants": 2, "hasModel": true, "resizable": true },
+    "bridge":        { "name": "Prefab_Bridge",     "color": "#deb887", "variants": 1 },
+    "spawn":         { "name": "Prefab_Spawn",      "color": "#00ffff", "variants": 1, "opacity": 0.6, "groundSnap": true },
+    "checkpoint":    { "name": "Prefab_Checkpoint", "color": "#1e90ff", "variants": 1, "opacity": 0.6, "groundSnap": true },
+    "goal":          { "name": "Prefab_Goal",       "color": "#ffd700", "variants": 1, "opacity": 0.6, "groundSnap": true },
+    "exit":          { "name": "Prefab_Exit",       "color": "#00ff7f", "variants": 1, "opacity": 0.6, "groundSnap": true },
+    "objective":     { "name": "Prefab_Objective",  "color": "#ff1493", "variants": 1, "opacity": 0.6, "groundSnap": true },
+    "trap":          { "name": "Prefab_Trap",       "color": "#cd5c5c", "variants": 1, "groundSnap": true, "opacity": 0.5 },
+    "hazard":        { "name": "Prefab_Hazard",     "color": "#8b0000", "variants": 1, "floorLike": true, "opacity": 0.5 },
+    "switch":        { "name": "Prefab_Switch",     "color": "#ff4500", "variants": 1, "groundSnap": true },
+    "key":           { "name": "Prefab_Key",        "color": "#ffd700", "variants": 1, "groundSnap": true },
+    "barrier":       { "name": "Prefab_Barrier",    "color": "#4b0082", "variants": 2, "hasModel": true, "groundSnap": true },
+    "moving_platform": { "name": "Prefab_MovingPF", "color": "#20b2aa", "variants": 1 },
+    "fragile":     { "name": "Prefab_Fragile",  "color": "#d2691e", "variants": 1, "groundSnap": true },
+    "water":         { "name": "Prefab_Water",      "color": "#0000cd", "variants": 1, "floorLike": true, "opacity": 0.4 },
+    "lava":          { "name": "Prefab_Lava",       "color": "#ff4500", "variants": 1, "floorLike": true, "opacity": 0.8 },
+    "tree":          { "name": "Prefab_Tree",       "color": "#228b22", "variants": 12, "hasModel": true, "groundSnap": true },
+    "rock":          { "name": "Prefab_Rock",       "color": "#3f3f3f", "variants": 4, "materials": 4, "hasModel": true, "groundSnap": true },
+    "plant":         { "name": "Prefab_Plant",      "color": "#02fd1b", "variants": 6, "hasModel": true, "groundSnap": true },
+    "vehicle":       { "name": "Prefab_Vehicle",    "color": "#4169e1", "variants": 2, "hasModel": true, "groundSnap": true },
+    "ball":          { "name": "Prefab_Ball",       "color": "#d68915", "variants": 5, "hasModel": true, "groundSnap": true },
+    "paper":         { "name": "Prefab_Paper",      "color": "#89ca21", "variants": 3, "hasModel": true, "groundSnap": true },
+    "light":         { "name": "Prefab_Light",      "color": "#ffffe0", "variants": 1, "groundSnap": true },
+    "landmark":      { "name": "Prefab_Landmark",   "color": "#4682b4", "variants": 2, "hasModel": true, "groundSnap": true },
+    "bounce":        { "name": "Prefab_Bounce",     "color": "#ff69b4", "variants": 1, "hasModel": true, "groundSnap": true },
+    "building":      { "name": "Prefab_Building",   "color": "#77808c", "variants": 3, "hasModel": true, "groundSnap": true, "nativeSizing": true, "resizable": true, "modelScale": 1.6 },
+    "prop":          { "name": "Prefab_Prop",       "color": "#77858c", "variants": 2, "hasModel": true, "groundSnap": true }
+  },
+  "MODE_CONFIG": {
+    "free": {
+      "label": "🎨 自由制作",
+      "description": "ルール制限なし。全Roleを使用して思いついた空間を自由に作るモード。",
+      "roles": ["landform", "terrain", "ground", "platform", "slope", "cliff", "pit", "wall", "room", "corridor", "door", "window", "boundary", "cover", "tower", "path", "climb", "bridge", "spawn", "checkpoint", "goal", "exit", "objective", "trap", "hazard", "switch", "key", "barrier", "moving_platform", "fragile", "water", "lava", "tree", "rock", "plant", "vehicle", "ball", "paper", "light", "landmark", "bounce", "building", "prop"],
+      "requiredRoles": ["ground"],
+      "minCounts": {}
+    },
+    "combat": {
+      "label": "🔫 対戦アリーナ (Combat)",
+      "description": "遮蔽物で射線を切り、高所を取り合う撃ち合いの面白さを作るモード。",
+      "roles": ["ground", "platform", "wall", "room", "corridor", "boundary", "cover", "tower", "climb", "bridge", "spawn", "door", "window", "vehicle", "rock", "building", "prop"],
+      "requiredRoles": ["ground", "cover", "tower", "spawn"],
+      "minCounts": { "cover": 4, "tower": 1, "spawn": 2 }
+    },
+    "platforming": {
+      "label": "🧗 立体アスレチック (Platforming)",
+      "description": "足場を登り継ぎ、穴を跨いでゴールを目指す、高さと移動の面白さを作るモード。",
+      "roles": ["landform", "terrain", "ground", "platform", "slope", "cliff", "pit", "climb", "bridge", "spawn", "checkpoint", "goal", "moving_platform", "water", "lava", "bounce"],
+      "requiredRoles": ["ground", "platform", "climb", "spawn", "goal"],
+      "minCounts": { "platform": 2, "climb": 1, "spawn": 1, "goal": 1 }
+    }
+  },
+  "MODE_GUIDELINES": {
+    "combat": {
+      "do": [
+        "spawn は対角線上の最も遠い2箇所に配置し、開始直後に射線が通らないようにする",
+        "tower は全体を見渡せる位置に配置する",
+        "cover は交戦が起きる中央付近に分散して配置する"
+      ],
+      "dont": ["spawn 地点から相手の spawn 地点が直接見えるようにしない"]
+    },
+    "platforming": {
+      "do": [
+        "spawn から goal まで、climb(階段等) を使って platform(高所の足場) を登り継ぐルートを作る",
+        "pit や lava(危険な床) がある場合は、それを跨ぐように bridge を架ける"
+      ],
+      "dont": ["climb が繋がっていない孤立した platform を作らない"]
+    }
+  }
+}

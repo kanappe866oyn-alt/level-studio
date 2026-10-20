@@ -1,0 +1,6 @@
+.sample-generation-backdrop { position: fixed; inset: 0; z-index: 10000; display: grid; place-items: center; padding: 24px; background: #10202ac2; }
+.sample-generation-dialog { width: min(460px, 100%); box-sizing: border-box; border: 1px solid #607b86; border-radius: 14px; padding: 28px; background: #192934; color: #e7efeb; box-shadow: 0 18px 60px #0008; font: 14px/1.8 system-ui, sans-serif; }
+.sample-generation-dialog h2 { margin: 0 0 12px; font-size: 18px; }
+.sample-generation-dialog p { min-height: 3.6em; margin: 0 0 20px; color: #c9d9d6; }
+.sample-generation-dialog button { padding: 10px 18px; border: 1px solid #8aa5b1; border-radius: 8px; background: #29434e; color: #fff; cursor: pointer; font: inherit; }
+.sample-generation-dialog button:focus-visible { outline: 3px solid #b5eab4; outline-offset: 3px; }
