@@ -2,11 +2,14 @@ import { packager } from '@electron/packager';
 import { cp, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
-const root = process.cwd(), version = '0.1.33';
+const root = process.cwd(), version = '0.1.34';
+const bundleIndex = process.argv.indexOf('--bundle');
+if (bundleIndex >= 0 && !process.argv[bundleIndex + 1]) throw new Error('--bundle requires a built application directory');
+const bundleRoot = bundleIndex < 0 ? path.join(root, 'dist') : path.resolve(process.argv[bundleIndex + 1]);
 const outputRoot = path.join(root, 'output');
 await mkdir(outputRoot, { recursive: true });
 const staging = await mkdtemp(path.join(outputRoot, 'desktop-package-'));
-await cp(path.join(root, 'dist'), path.join(staging, 'dist'), { recursive: true });
+await cp(bundleRoot, path.join(staging, 'dist'), { recursive: true });
 await mkdir(path.join(staging, 'desktop'));
 for (const name of ['main.mjs', 'application.mjs', 'bundlePaths.mjs']) await cp(path.join(root, 'desktop', name), path.join(staging, 'desktop', name));
 await writeFile(path.join(staging, 'package.json'), JSON.stringify({ name: 'level-studio', productName: 'LEVEL STUDIO', version, type: 'module', main: 'desktop/main.mjs' }, null, 2));
