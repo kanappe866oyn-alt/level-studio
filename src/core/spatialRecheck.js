@@ -1,8 +1,8 @@
 import { SPATIAL_GRID, independentRouteCount, validateSpatialPlan } from './spatialPlan.js';
-import { createSpatialWorld } from './spatialGeometry.js';
+import { createSpatialWorld, getBounds, isWalkable } from './spatialGeometry.js';
 import { inspectSpatialSightlines } from './spatialSightlines.js';
 import { inspectConnectionWalking } from './spatialStageGenerator.js';
-import { inspectSpatialRequest } from './spatialRequest.js';
+import { inspectSpatialRequest, areaMatches } from './spatialRequest.js';
 import { measureSpatialStage } from './spatialMeasurements.js';
 import { spatialRouteViews } from './spatialRouteViews.js';
 import { inspectSpatialResilience } from './spatialResilience.js';
@@ -50,6 +50,31 @@ export function recheckSpatialStage(objects, design) {
     if (condition.kind === 'sight') {
       const sight = sightlines.find(s => s.from === row.from && s.to === row.to && s.relation === condition.relation);
       return { ...row, passed: row.passed && !!sight?.passed, detail: `${row.detail}（対象の床も照合）` };
+    }
+    if (condition.kind === 'areaSize') {
+      const targets = areaMatches(plan, condition.target);
+      const passed = targets.length > 0 && targets.every(a => {
+        const parts = objects.filter(o => o.id === `sp_area_${a.id}` || o.id.startsWith(`sp_area_${a.id}_floor_`));
+        if (!supported(a.id) || !parts.length || parts.some(o => !isWalkable(o) || o.customModelUrl)) return false;
+        const boxes = parts.map(getBounds), axis = condition.axis === 'width' ? 'X' : 'Z';
+        const size = Math.max(...boxes.map(b => b[`max${axis}`])) - Math.min(...boxes.map(b => b[`min${axis}`]));
+        return Math.abs(size - condition.value) < 0.05;
+      });
+      return { ...row, passed: row.passed && passed, detail: `${row.detail}（現在の床の実寸と支持を照合）` };
+    }
+    if (condition.kind === 'connection') {
+      const sources = areaMatches(plan, condition.from), targets = areaMatches(plan, condition.to);
+      const actualLinks = plan.connections.filter((link, index) => {
+        if (!((sources.some(a => a.id === link.from) && targets.some(a => a.id === link.to)) || (sources.some(a => a.id === link.to) && targets.some(a => a.id === link.from)))) return false;
+        const actual = objects.find(o => o.id === `sp_link_${index}`);
+        if (!actual || actual.customModelUrl || !validLinks.some(c => c.from === link.from && c.to === link.to)) return false;
+        if (condition.width !== undefined && (Math.abs(actual.size[0] - link.width - 2 * ((link.flare || 0) + Math.abs(link.curve || 0))) > 0.05 || actual.terrainProfile?.curve && Math.abs(actual.terrainProfile.curve.width - condition.width) > 0.05)) return false;
+        if (condition.traversal === 'ramp' && !(actual.role === 'landform' && actual.terrainProfile?.grade && !actual.terrainProfile?.stepCount)) return false;
+        if (condition.traversal === 'stairs' && !(actual.role === 'climb' && actual.variant !== 2 || actual.role === 'landform' && actual.terrainProfile?.stepCount)) return false;
+        return true;
+      });
+      const measured = inspectSpatialRequest({ ...plan, connections: actualLinks }, { conditions: [condition] }).rows[0];
+      return { ...row, passed: row.passed && measured.passed, detail: `${row.detail}（現在の通路幅・形状・往復歩行を照合）` };
     }
     // A height check also requires a standing space at the original high area.
     const relevant = areas.filter(a => a.kind === 'high' && row.detail.includes(`${a.name}:`));

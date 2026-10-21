@@ -273,7 +273,7 @@ function tryVistaRailAdjustment(stage, brief) {
 export async function generatePlannedSpatialStage(options) {
   options.signal.throwIfAborted();
   const brief = readSpatialRequest(options.userPrompt || '');
-  options.onStatus?.('指示の経路数・高台の高さ・視線条件を整理しています。');
+  options.onStatus?.('指示の広さ・高低差・坂や階段・通路幅・視線条件を整理しています。');
   const unsupported = spatialRequestProblems(brief);
   if (unsupported.length) {
     const error = new Error(unsupported.join('\n')); error.code = 'SPATIAL_VALIDATION'; throw error;

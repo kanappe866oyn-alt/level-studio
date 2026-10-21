@@ -1,4 +1,4 @@
-import { independentRouteCount, SPATIAL_HIGH_HEIGHTS } from './spatialPlan.js';
+import { independentRouteCount, SPATIAL_HIGH_HEIGHTS, SPATIAL_AREA_SIZE } from './spatialPlan.js';
 
 const NUMBER = '(?<![0-9一二三四五六七八九十百千万.])(?:-?[0-9]+(?:\\.[0-9]+)?|[一二三四五六七八九十]+)';
 const HEIGHT_UNIT = 'cm|センチメートル|センチ|mm|ミリメートル|ミリ|m|メートル';
@@ -25,13 +25,43 @@ export function readSpatialRequest(request = '') {
   if (typeof request !== 'string' || request.length > 20000) throw new Error('立体マップの指示が長すぎるか不正です。');
   const source = normal(request), conditions = [], notes = [];
   const add = condition => {
-    if (!conditions.some(c => c.kind === condition.kind && c.evidence === condition.evidence)) conditions.push({ id: `condition_${conditions.length + 1}`, ...condition });
+    if (!conditions.some(c => c.kind === condition.kind && c.evidence === condition.evidence && c.axis === condition.axis && c.target === condition.target && c.from === condition.from && c.to === condition.to)) conditions.push({ id: `condition_${conditions.length + 1}`, ...condition });
   };
   for (const sentence of source.split(/[。！？;\n]/).filter(s => s.trim())) {
-    let previousSource = null;
+    let previousSource = null, previousSizeTarget = null;
     for (const clause of sentence.split(/[、,]/).flatMap(visionClauses).filter(s => s.trim())) {
       const text = clause.trim();
-      if (optional(text)) { notes.push(`任意・例示として扱いました: ${text}`); continue; }
+      if (optional(text)) { previousSizeTarget = null; notes.push(`任意・例示として扱いました: ${text}`); continue; }
+      const connection = text.match(new RegExp(`(${REF})\\s*(?:から|と)\\s*(${REF})\\s*(?:へ|まで|を)\\s*(.*)`));
+      if (connection && /つな|繋|結ぶ|結ん|接続|作る|設け/.test(connection[3])) {
+        const tail = connection[3], width = tail.match(new RegExp(`(?:通路の)?幅\\s*(?:は|を)?\\s*(${NUMBER})\\s*(${HEIGHT_UNIT})`));
+        const ramp = /坂|スロープ/.test(tail), stairs = /階段/.test(tail);
+        if (width || ramp || stairs) {
+          if (/ではなく|不要|要らない|使わず|使わない|しない|避け|以上|以下|未満|以内|程度/.test(tail) || ramp && stairs) notes.push(`接続の否定・範囲・複数方式は自動照合できません: ${text}`);
+          else {
+            const unit = width?.[2], scale = /^(?:cm|センチ)/.test(unit) ? 0.01 : /^(?:mm|ミリ)/.test(unit) ? 0.001 : 1;
+            add({ kind: 'connection', from: connection[1].trim(), to: connection[2].trim(),
+              ...(width ? { width: numeral(width[1]) * scale } : {}), ...(ramp || stairs ? { traversal: ramp ? 'ramp' : 'stairs' } : {}), evidence: text });
+          }
+        }
+      }
+      const dimensions = [...text.matchAll(new RegExp(`(幅|奥行き|奥行)\\s*(?:は|を)?\\s*(${NUMBER})\\s*(${HEIGHT_UNIT})`, 'g'))];
+      if (connection || !dimensions.length) previousSizeTarget = null;
+      if (!connection && dimensions.length) {
+        if (/ではなく|不要|要らない|しない|以上|以下|未満|以内|程度/.test(text)) {
+          previousSizeTarget = null; notes.push(`広さの否定・範囲は自動照合できません: ${text}`);
+        } else {
+          let target = /^(?:幅|奥行)/.test(text) ? previousSizeTarget : null;
+          for (const dimension of dimensions) {
+            const explicit = text.slice(0, dimension.index).match(new RegExp(`(${REF})\\s*(?:の|は|を)?\\s*$`));
+            target = explicit?.[1].trim() || target;
+            if (!target) { notes.push(`広さの対象を自動で特定できません: ${text}`); continue; }
+            const unit = dimension[3], scale = /^(?:cm|センチ)/.test(unit) ? 0.01 : /^(?:mm|ミリ)/.test(unit) ? 0.001 : 1;
+            add({ kind: 'areaSize', target, axis: dimension[1] === '幅' ? 'width' : 'depth', value: numeral(dimension[2]) * scale, evidence: text });
+            previousSizeTarget = target;
+          }
+        }
+      }
       const routePatterns = [
         new RegExp(`(${NUMBER})\\s*(?:つの|本の|本|つ)?\\s*(?:独立した)?(?:経路|ルート)`),
         new RegExp(`(?:経路|ルート)(?:数)?\\s*(?:は|を|:|=)?\\s*(${NUMBER})\\s*(?:本|つ)?(?!\\s*(?:m|cm|mm|メートル|[0-9]))`),
@@ -52,7 +82,7 @@ export function readSpatialRequest(request = '') {
         new RegExp(`(${NUMBER})\\s*(${HEIGHT_UNIT})\\s*(?:の)?\\s*(高台|高架)`),
       ];
       const heights = heightPatterns.map((p, i) => ({ match: text.match(p), i })).find(x => x.match);
-      if (heights) {
+      if (heights && !/(?:幅|奥行き?|通路長)\s*$/.test(text.slice(0, heights.match.index))) {
         if (/以下|以上|未満|以内|程度|くらい|ではなく|不要|要らない|にしない/.test(text)) notes.push(`高さの範囲・否定指定は自動照合できません: ${text}`);
         else {
           const unit = heights.match[heights.i === 0 ? 3 : 2];
@@ -61,7 +91,7 @@ export function readSpatialRequest(request = '') {
           const scope = [...text.slice(0, heights.match.index).matchAll(/(西|東|北|南)(?:の|に|側)/g)].at(-1)?.[1] || null;
           add({ kind: 'height', value, scope, evidence: text });
         }
-      } else if (/高台|高架/.test(text) && /[0-9一二三四五六七八九十百千]/.test(text) && /m|メートル|センチ|ミリ|高さ/.test(text)) notes.push(`この高台の寸法表現は自動照合できません: ${text}`);
+      } else if (!dimensions.length && /高台|高架/.test(text) && /[0-9一二三四五六七八九十百千]/.test(text) && /m|メートル|センチ|ミリ|高さ/.test(text)) notes.push(`この高台の寸法表現は自動照合できません: ${text}`);
       const direct = text.match(new RegExp(`(${REF})\\s*から\\s*(${REF})\\s*(?:が|は|を)?\\s*(?:広く\\s*)?(${VISION})`));
       const reverse = text.match(new RegExp(`(${REF})\\s*(?:が|は)\\s*(${REF})\\s*から\\s*(?:広く\\s*)?(${VISION})`));
       const attributive = text.match(new RegExp(`(${REF})\\s*から\\s*(?:広く\\s*)?(${VISION})\\s*(?:ような|ようにした)?\\s*(${REF})`));
@@ -84,6 +114,8 @@ export function readSpatialRequest(request = '') {
 export function spatialRequestProblems(brief) {
   const issues = [];
   for (const c of brief.conditions) {
+    if (c.kind === 'connection' && c.width !== undefined && (!Number.isFinite(c.width) || c.width < 3 || c.width > 5)) issues.push(`「${c.evidence}」: この設計方式の通路幅は3〜5mです。指定幅を別の値へ置き換える生成は行いません。`);
+    if (c.kind === 'areaSize' && (!Number.isFinite(c.value) || c.value < SPATIAL_AREA_SIZE.min || c.value > SPATIAL_AREA_SIZE.max)) issues.push(`「${c.evidence}」: この設計方式の広場の幅・奥行は8〜24mです。指定寸法を別の値へ置き換える生成は行いません。`);
     if (c.kind === 'routes' && (!Number.isInteger(c.value) || c.value < 1 || c.value > 3)) issues.push(`「${c.evidence}」: この設計方式の指定経路数は1〜3本です。「指示と画像に合わせて生成」では別の構成を試せます。`);
     if (c.kind === 'height' && !SPATIAL_HIGH_HEIGHTS.includes(c.value)) issues.push(`「${c.evidence}」: この設計方式の高台は2・4・6・8mです。${c.value}mを別の高さに置き換える生成は行いません。自由な寸法は「指示と画像に合わせて生成」を選択してください。`);
   }
@@ -101,6 +133,17 @@ export function spatialRequestProblems(brief) {
     if (new Set(brief.conditions.filter(c => c.kind === 'height' && c.scope === scope).map(c => c.value)).size > 1) issues.push(`${scope}の高台の高さに異なる必須値があります。条件をひとつにしてください。`);
   }
   const sightRelations = new Map();
+  const layoutValues = new Map();
+  for (const c of brief.conditions.filter(c => ['connection', 'areaSize'].includes(c.kind))) {
+    const ref = s => s.replace(/\s|側|の/g, '');
+    const key = c.kind === 'areaSize' ? `${ref(c.target)}:${c.axis}` : [ref(c.from), ref(c.to)].sort().join(':');
+    for (const field of c.kind === 'areaSize' ? ['value'] : ['width', 'traversal']) {
+      if (c[field] === undefined) continue;
+      const name = `${c.kind}:${key}:${field}`;
+      if (layoutValues.has(name) && layoutValues.get(name) !== c[field]) issues.push(`「${c.evidence}」: 同じ対象の広さ・接続指定が矛盾しています。`);
+      layoutValues.set(name, c[field]);
+    }
+  }
   // Only merge explicit spelling variants of the same reference. Different
   // directions and different named locations must retain independent rules.
   const sightRef = ref => ref.replace(/\s|側|の/g, '');
@@ -118,7 +161,7 @@ export function validateSpatialRequestRecord(record) {
   for (const c of record.conditions) {
     if (!c || !/^condition_\d+$/.test(c.id) || ids.has(c.id) || typeof c.evidence !== 'string' || !c.evidence.trim() || !source.includes(c.evidence)) throw new Error('文章条件の根拠・IDが不正です。');
     ids.add(c.id);
-    if (c.kind === 'routes' ? !Number.isInteger(c.value) || c.value < 1 || c.value > 3 || !['exact', 'atLeast', 'atMost'].includes(c.operator) : c.kind === 'height' ? !SPATIAL_HIGH_HEIGHTS.includes(c.value) || ![null, '西', '東', '南', '北'].includes(c.scope) : c.kind === 'sight' ? typeof c.from !== 'string' || !c.from || typeof c.to !== 'string' || !c.to || !['visible', 'hidden'].includes(c.relation) : true) throw new Error('文章条件の値が不正です。');
+    if (c.kind === 'routes' ? !Number.isInteger(c.value) || c.value < 1 || c.value > 3 || !['exact', 'atLeast', 'atMost'].includes(c.operator) : c.kind === 'height' ? !SPATIAL_HIGH_HEIGHTS.includes(c.value) || ![null, '西', '東', '南', '北'].includes(c.scope) : c.kind === 'areaSize' ? typeof c.target !== 'string' || !c.target || !['width', 'depth'].includes(c.axis) || !Number.isFinite(c.value) || c.value < 8 || c.value > 24 : c.kind === 'connection' ? typeof c.from !== 'string' || !c.from || typeof c.to !== 'string' || !c.to || c.width === undefined && c.traversal === undefined || c.width !== undefined && (!Number.isFinite(c.width) || c.width < 3 || c.width > 5) || c.traversal !== undefined && !['ramp', 'stairs'].includes(c.traversal) : c.kind === 'sight' ? typeof c.from !== 'string' || !c.from || typeof c.to !== 'string' || !c.to || !['visible', 'hidden'].includes(c.relation) : true) throw new Error('文章条件の値が不正です。');
     if (c.minVisibleRatio !== undefined && (c.kind !== 'sight' || c.relation !== 'visible' || c.minVisibleRatio !== 0.5 || !/見渡/.test(c.evidence))) throw new Error('文章条件の視界の基準が不正です。');
   }
   const checked = new Set();
@@ -130,7 +173,7 @@ export function validateSpatialRequestRecord(record) {
   return record;
 }
 
-function areaMatches(plan, ref) {
+export function areaMatches(plan, ref) {
   const areas = Array.isArray(plan.areas) ? plan.areas.filter(a => a && typeof a.name === 'string') : [];
   const main = areas.find(a => a.kind === 'courtyard') || areas.find(a => a.kind === 'entry');
   const bare = ref.replace(/^(?:南西|北西|南東|北東|西|東|南|北|中央|奥|手前)(?:側)?(?:の)?\s*/, '');
@@ -141,6 +184,7 @@ function areaMatches(plan, ref) {
   if (/南/.test(ref)) candidates = candidates.filter(a => a.gz > (main?.gz ?? 0));
   const exact = candidates.filter(a => a.name === ref);
   if (exact.length) return exact;
+  if (/^(?:中庭|中央広場|中央)$/.test(ref) && candidates.some(a => a.id === main?.id)) return [main];
   if (/裏道|側道/.test(ref)) { const middle = candidates.filter(a => /(?:裏道|側道)$/.test(a.name)); if (middle.length) return middle; }
   return candidates;
 }
@@ -161,6 +205,20 @@ export function inspectSpatialRequest(plan, brief, { geometry = false, sightline
       const targets = areaMatches(plan, `${c.scope ? `${c.scope}の` : ''}高台`);
       passed = targets.length > 0 && targets.every(a => a.level * 4 === c.value);
       detail = targets.length ? targets.map(a => `${a.name}: ${a.level * 4}m`).join('、') : '対象の高台がありません';
+    } else if (c.kind === 'areaSize') {
+      const targets = areaMatches(plan, c.target);
+      passed = targets.length > 0 && targets.every(a => Math.abs(a[c.axis] - c.value) < 1e-6);
+      detail = targets.length ? targets.map(a => `${a.name}: ${c.axis === 'width' ? '幅' : '奥行'}${a[c.axis]}m（指定${c.value}m）`).join('、') : '対象の広場がありません';
+    } else if (c.kind === 'connection') {
+      const sources = areaMatches(plan, c.from), targets = areaMatches(plan, c.to);
+      const links = (plan.connections || []).filter(link => sources.some(a => a.id === link.from) && targets.some(a => a.id === link.to) || sources.some(a => a.id === link.to) && targets.some(a => a.id === link.from));
+      const matches = links.filter(link => {
+        const a = plan.areas.find(a => a.id === link.from), b = plan.areas.find(a => a.id === link.to);
+        return (c.width === undefined || Math.abs(link.width - c.width) < 1e-6) &&
+          (!c.traversal || a.level !== b.level && (link.traversal || 'stairs') === c.traversal && (c.traversal !== 'ramp' || plan.foundation === 'terrain'));
+      });
+      passed = matches.length > 0;
+      detail = `${c.from} ↔ ${c.to}: ${c.width === undefined ? '' : `幅${c.width}m `}${c.traversal === 'ramp' ? '坂' : c.traversal === 'stairs' ? '階段' : '通路'}${passed ? 'を設計に保持' : 'の直接接続がありません'}`;
     } else {
       const sources = areaMatches(plan, c.from), targets = areaMatches(plan, c.to);
       const line = (plan.requirements?.sightlines || []).find(s => s && s.relation === c.relation && sources.some(a => a.id === s.from) && targets.some(a => a.id === s.to));
@@ -181,5 +239,5 @@ export function inspectSpatialRequest(plan, brief, { geometry = false, sightline
 }
 
 export function spatialRequestPrompt(brief) {
-  return `\n【文章から抽出した明示条件・変更禁止】\n${JSON.stringify(brief.conditions)}\n経路数のexactは実際の独立経路数を一致させます。heightは対象の全ての高台の床高さです。sightの対象は用途・名前・方角に合うエリアをsightlinesへ登録します。minVisibleRatioが0.5の「見渡せる」条件は81組の目線の半数以上が通る配置を要求します。高さだけでなく高台の床・縁の遮り、対象までの距離も調整してください。これらの条件を削除・緩和して修正しないでください。`;
+  return `\n【文章から抽出した明示条件・変更禁止】\n${JSON.stringify(brief.conditions)}\n経路数のexactは実際の独立経路数を一致させます。heightは対象の全ての高台の床高さです。areaSizeは対象エリアのwidth（X方向）またはdepth（Z方向）を指定mに一致させます。connectionは用途・名前・方角に合う2地点をconnectionsで直接接続し、widthとtraversalの指定を保持します。坂はfoundation:"terrain"と異なる床高さを必要とし、階段も異なる高さを接続します。坂の実長不足は指定幅や形式を変えず、地点間隔を広げて解決してください。sightの対象は用途・名前・方角に合うエリアをsightlinesへ登録します。minVisibleRatioが0.5の「見渡せる」条件は81組の目線の半数以上が通る配置を要求します。高さだけでなく高台の床・縁の遮り、対象までの距離も調整してください。これらの条件を削除・緩和して修正しないでください。`;
 }
