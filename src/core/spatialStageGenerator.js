@@ -24,6 +24,7 @@ import { finishTerrainBuildingColors } from './buildingAppearance.js';
 import { reserveBuildingPlots, inspectBuildingApproaches } from './buildingPlots.js';
 import { CURVE_STEPS, curveOffset, spatialConnectionPoints, curvedStairRows, connectionWidth } from './terrainCurve.js';
 import { readSpatialRequest, spatialRequestProblems, inspectSpatialRequest, spatialRequestPrompt } from './spatialRequest.js';
+import { repairSpatialPlanSpacing } from './spatialPlanSpacing.js';
 
 const box = (id, name, role, pos, size, color = '#80909c', yaw = 0) => ({ id, name, role, type: 'box', pos, size, rot: [0, yaw, 0], color, variant: 1, material: 0 });
 const overlapXZ = (a, b) => a.minX < b.maxX - 0.01 && a.maxX > b.minX + 0.01 && a.minZ < b.maxZ - 0.01 && a.maxZ > b.minZ + 0.01;
@@ -291,7 +292,18 @@ export async function generatePlannedSpatialStage(options) {
       else if (contract && JSON.stringify(contract) !== JSON.stringify(candidate)) {
         throw new Error(`修正で元の指定条件・対象エリアを変更しないでください。保持する条件: ${JSON.stringify(contract)}。壁・位置・高さ・接続で解決してください。`);
       }
-      const stage = tryVistaRailAdjustment(buildSpatialStage(input, mode), brief);
+      let assembled;
+      try {
+        assembled = buildSpatialStage(input, mode);
+      } catch (originalError) {
+        const repair = repairSpatialPlanSpacing(input);
+        if (!repair) throw originalError;
+        options.onStatus?.('広場の寸法と高低差を保ち、坂・階段に必要な長さを計算しています。');
+        assembled = buildSpatialStage(repair.plan, mode);
+        assembled.design_rationale.spatial_design.spacing_adjustment = { version: 1, changes: repair.changes };
+        assembled.design_rationale.key_decisions.push({ object_id: 'sp_ground', reason: '広場の寸法・高さ・接続・通路幅を保持し、坂と階段の必要長に合わせてエリア間隔を補正しました。' });
+      }
+      const stage = tryVistaRailAdjustment(assembled, brief);
       const actual = inspectSpatialRequest(stage.plan, brief, { geometry: true,
         sightlines: inspectSpatialSightlines(stage.objects, stage.areas, stage.plan.requirements.sightlines) });
       if (actual.issues.length) throw new Error(actual.issues.join('\n'));
