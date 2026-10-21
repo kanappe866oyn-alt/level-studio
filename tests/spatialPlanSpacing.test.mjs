@@ -10,6 +10,36 @@ function compressed() {
   return plan;
 }
 
+test('large neighboring courtyards are separated even without a direct connection', () => {
+  const plan = createTerrainSpatialPlan();
+  const base = plan.areas[0];
+  plan.areas = [
+    ['entry', 0, -24, 8, 'entry'], ['goal', 0, -40, 8, 'goal'],
+    ['left', -8, -24, 8, 'passage'], ['right', 8, -24, 8, 'passage'],
+    ['left_court', -8, 0, 24, 'courtyard'], ['right_court', 8, 0, 24, 'courtyard'],
+  ].map(([id, x, z, width, kind]) => ({ ...base, id, name: id, kind, gx: x / 16, gz: z / 16, width, depth: 8 }));
+  plan.connections = [['entry', 'goal'], ['entry', 'left'], ['entry', 'right'], ['left', 'left_court'], ['right', 'right_court']]
+    .map(([from, to]) => ({ from, to, width: 4, enclosure: 'open' }));
+  plan.requirements = { minimumRoutes: 1, sightlines: [] };
+  assert.throws(() => buildSpatialStage(plan), /重なっています/);
+  const repaired = repairSpatialPlanSpacing(plan);
+  const stage = buildSpatialStage(repaired.plan);
+  assert.deepEqual(inspectSpatialStage(stage).issues, []);
+  assert.ok(inspectConnectionWalking(stage).every(c => c.forward && c.backward));
+  assert.deepEqual(repaired.plan.connections, plan.connections);
+  assert.equal(repaired.plan.areas.find(a => a.id === 'left_court').width, 24);
+});
+
+test('separated floors retain an intentional over-under layout', () => {
+  const plan = createTerrainSpatialPlan();
+  assert.equal(repairSpatialPlanSpacing(plan), null);
+  const stage = buildSpatialStage(plan);
+  const upper = stage.connections.find(c => c.from === 'high_s' && c.to === 'high_n');
+  const lower = stage.areas.find(a => a.id === 'under');
+  assert.equal(upper.x, lower.x);
+  assert.ok(inspectConnectionWalking(stage).every(c => c.forward && c.backward));
+});
+
 test('spacing repair preserves topology, dimensions, heights and direction without mutating the proposal', () => {
   const input = compressed(), original = structuredClone(input);
   const repaired = repairSpatialPlanSpacing(input);
