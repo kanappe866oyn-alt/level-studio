@@ -8,6 +8,8 @@
 - [Windows 0.1.33のダウンロード](https://github.com/kanappe866oyn-alt/level-studio/releases/tag/v0.1.33)
 - [公開ソース](https://github.com/kanappe866oyn-alt/level-studio)
 
+Web版の全体表示は歩ける街並みを中心に構図を取り、岩山や外周植生を背景として描画します。生成物の形や経路は変えません。
+
 Web版の新規立体集落はルール36です。岩山を土台へ寄せ、広い広場には樹木・植栽枡・ベンチをまとめて配置します。通路・建物・上段床・指定した視線を保護し、置けない場所には追加しません。
 
 現在のWeb版はNetlify CLIから手動で公開しています。GitHubへ変更を送るだけではサイトへ自動反映されません。Windows版は検証済みの0.1.33で、今回のWebトップ画面とモデルの必要時読み込みは再同梱していません。
@@ -56,3 +58,4 @@ Web版はNetlify、WindowsのZIPはGitHub Releasesで配布する構成です。
 Windows版は64bit向けのZIP試作版。ZIPをすべて展開し、`LevelStudio.exe` を起動します。DLL・resources・localesを含むフォルダ全体が必要です。署名付きインストーラー・自動更新・別PCでの動作検証はまだ提供していません。
 
 設定の根拠：[NetlifyのVite設定](https://docs.netlify.com/build/frameworks/framework-setup-guides/vite/)、[GitHub Releases](https://docs.github.com/en/repositories/releasing-projects-on-github/about-releases)。
+

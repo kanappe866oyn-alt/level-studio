@@ -1,6 +1,8 @@
 import { getBounds, createSpatialWorld, WALKING } from './spatialGeometry.js';
 import { PLAYER_EYE_HEIGHT } from './worldScale.js';
 import { segmentHitsBox, spatialEyeSamples } from './spatialSightlines.js';
+import { isRockMountain } from './terrainRockMountains.js';
+import { getModelDefault } from './modelCatalog.js';
 
 export function overviewView(objects, fov = 50, aspect = 1, { balance = false } = {}) {
   if (!objects.length) return null;
@@ -64,9 +66,16 @@ export function overviewView(objects, fov = 50, aspect = 1, { balance = false } 
 
 // Spatial maps keep decorative background and the deep safety foundation, but
 // frame the actual playable structures. User-added geometry remains included.
+export function isSpatialLandscapeDecoration(object) {
+  if (isRockMountain(object)) return true;
+  return !object.customModelUrl && object.modelGrounding?.surfaceId === 'sp_terrain_surround' &&
+    !!object.modelDimensions?.path && object.modelDimensions.path === getModelDefault(object.role, object.variant)?.path &&
+    ['sp_outer_garden_', 'sp_landscape_detail_', 'sp_garden_cluster_'].some(prefix => object.id.startsWith(prefix));
+}
+
 export function spatialOverviewView(objects, fov = 50, aspect = 1) {
   const playable = objects.filter(o => !['sp_ground', 'sp_void', 'sp_terrain_surround'].includes(o.id) &&
-    !['backdrop', 'support', 'foundation'].includes(o.spatialAppearance?.category));
+    !['backdrop', 'support', 'foundation'].includes(o.spatialAppearance?.category) && !isSpatialLandscapeDecoration(o));
   return playable.length ? overviewView(playable, fov, aspect, { balance: true }) : overviewView(objects, fov, aspect);
 }
 
