@@ -1,3 +1,4 @@
+import { generationValidationError } from './generationErrors.js';
 import ASSETS from '../assets.json' with { type: 'json' };
 import { getBounds } from './spatialGeometry.js';
 import { serializeSceneForAI } from './sceneSerialization.js';
@@ -184,7 +185,7 @@ export async function generateFaithfulStage({ request, theme, mode, hasImage, si
     const raw = await requestBrief(generationBriefPrompt(request, theme, mode, hasImage) + feedback);
     signal.throwIfAborted();
     try { brief = validateGenerationBrief(raw, context); break; }
-    catch (error) { if (i === 1) throw error; feedback = `\n前の読み取りの問題: ${error.message}。元の指示に戻って修正してください。`; }
+    catch (error) { if (i === 1) throw generationValidationError(error.message, 'reading'); feedback = `\n前の読み取りの問題: ${error.message}。元の指示に戻って修正してください。`; }
   }
   const contract = `${basePrompt}\n【検証済みの要求と空間構成】\n${JSON.stringify(brief)}\nrequirementsは必須。designGoalsとspatialStrategyに合わせて構成し、固定テンプレートへ置き換えない。各設計目標をspatial_planとkey_decisionsに対応付ける。unsupportedを達成したと説明しない。床と接続を先に、構造物と装飾を後に配置。素材の基準寸法と接地補正後に条件が成立することを確認。`;
   let repair = '';
@@ -213,7 +214,7 @@ export async function generateFaithfulStage({ request, theme, mode, hasImage, si
         unsupported: brief.unsupported,
       }, generation_contract: brief }, brief };
     }
-    if (i === 2) throw new Error(`指定条件・配置の検証を通過できませんでした。\n${issues.slice(0, 10).join('\n')}`);
+    if (i === 2) throw generationValidationError(`指定条件・配置の検証を通過できませんでした。\n${issues.slice(0, 10).join('\n')}`);
     const previous = objects || (Array.isArray(raw?.objects) ? raw.objects.filter(o => o && typeof o === 'object') : []);
     repair = `\n【前回の配置を修正】\n${serializeSceneForAI(previous)}\n問題:\n${issues.slice(0, 16).join('\n')}\n元の指示・必須条件・設計目標を保持した全objectsと設計理由を再出力。検証を通すために指定個数や寸法を変更しない。`;
   }

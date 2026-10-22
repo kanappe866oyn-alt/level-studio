@@ -42,7 +42,7 @@ export default function AISettings({ mode, setMode, model, setModel, apiKey, set
     } catch (error) { if (request.current === controller) setModelMessage(explainAIError(error)); }
     finally { clearTimeout(timeout); if (request.current === controller) setListing(false); }
   };
-  const modelChoices = models.length ? [...models] : [{ id: 'gemini-pro-latest', label: '品質優先 · Pro最新版' }, { id: 'gemini-flash-latest', label: '速度優先 · Flash最新版' }, { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro（従来のモデル）' }, { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash（従来のモデル）' }];
+  const modelChoices = models.length ? [...models] : [{ id: 'gemini-pro-latest', label: 'Pro（自動更新）' }, { id: 'gemini-flash-latest', label: 'Flash（自動更新）' }, { id: 'gemini-2.5-pro', label: 'gemini-2.5-pro' }, { id: 'gemini-2.5-flash', label: 'gemini-2.5-flash' }];
   if (!modelChoices.some(option => option.id === model)) modelChoices.unshift({ id: model, label: `${model}（現在の選択）` });
   const check = async () => {
     if (mode === 'local') {
@@ -64,7 +64,7 @@ export default function AISettings({ mode, setMode, model, setModel, apiKey, set
   return <div className="size-preview-overlay" onKeyDown={event => {
     if (event.key === 'Escape') close();
     if (event.key === 'Tab') {
-      const elements = [...dialog.current.querySelectorAll('button:not(:disabled), input, select, a[href]')];
+      const elements = [...dialog.current.querySelectorAll('button:not(:disabled), input, select, summary, a[href]')].filter(element => element.getClientRects().length);
       const first = elements[0], last = elements.at(-1);
       if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
@@ -75,9 +75,12 @@ export default function AISettings({ mode, setMode, model, setModel, apiKey, set
       <div className="ai-settings-body">
         <label>利用するAI<select className="sel" value={mode} autoFocus onChange={e => { invalidate(); setMode(e.target.value); }}><option value="gemini">Gemini（クラウド）</option><option value="local">自作AI（ローカル）</option></select></label>
         {mode === 'gemini' ? <>
-          <label>生成モデル<select aria-label="生成モデル" className="sel" value={model} onChange={e => { invalidate(); setModel(e.target.value); }}>{modelChoices.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
+          <label>生成モデル<select aria-label="生成モデル" className="sel" value={/flash/.test(model) ? 'flash' : /pro/.test(model) ? 'pro' : 'custom'} onChange={e => { invalidate(); setModel(e.target.value === 'flash' ? 'gemini-flash-latest' : 'gemini-pro-latest'); }}><option value="flash">Flash</option><option value="pro">Pro</option>{!/(flash|pro)/.test(model) && <option value="custom">個別指定</option>}</select></label>
+          <details><summary>モデルの詳細設定</summary>
+          <label>使用するモデルID<select aria-label="モデルID" className="sel" value={model} onChange={e => { invalidate(); setModel(e.target.value); }}>{modelChoices.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
           <button type="button" className="tbtn" disabled={checking || listing || !(apiKey.trim() || environmentKey)} onClick={loadModels}>{listing ? 'モデル候補を確認中…' : '利用できるモデルを確認'}</button>
           {modelMessage && <p role="status">{modelMessage}</p>}
+          </details>
           <label>Gemini APIキー<input className="inp" type={visibleKey ? 'text' : 'password'} value={apiKey} autoComplete="off" spellCheck={false} onChange={e => updateKey(e.target.value)} placeholder="自分のAPIキーを貼り付け" /></label>
           <div className="ai-settings-actions"><button className="tbtn" onClick={() => setVisibleKey(v => !v)}>{visibleKey ? 'キーを隠す' : 'キーを表示'}</button><button className="tbtn" onClick={() => { updateKey(''); setVisibleKey(false); }}>キーを削除</button><a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">APIキーを取得する ↗</a></div>
           <label className="checkline"><input type="checkbox" checked={remember} onChange={e => { setRemember(e.target.checked); setStorageMessage(saveSessionKey(getSessionStorage(), apiKey, e.target.checked) ? '' : 'このブラウザでは保存できません。'); }} />このタブでキーを一時保存する</label>

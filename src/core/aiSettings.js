@@ -35,10 +35,16 @@ export function shouldRetryAIError(error) {
 }
 
 export function explainAIError(error) {
+  if (error?.code === 'GENERATION_VALIDATION') return `生成案の検査で停止しました。既存のマップは保持しています。\n${String(error.message).slice(0, 1400)}`;
+  if (error?.code === 'AI_OUTPUT_LIMIT') return 'AIの応答が出力上限で打ち切られました。入力の長さだけが原因ではありません。生成案は適用していません。';
+  if (error?.code === 'AI_RESPONSE_BLOCKED') return 'AI側で応答が制限されました。生成案は受信できていません。既存のマップは保持しています。';
+  if (error?.code === 'AI_RESPONSE_INCOMPLETE') return 'AIが完成した応答を返さなかったため停止しました。既存のマップは保持しています。';
+  if (error?.code === 'AI_RESPONSE_FORMAT') return 'AIの応答を設計データとして読み取れませんでした。応答形式の問題であり、接続確認だけでは解決しません。';
   if (error?.code === 'AI_REQUEST_LIMIT') return error.message;
   if (error?.code === 'SPATIAL_VALIDATION') return `立体マップの設計条件を満たせませんでした。既存のステージを維持しています。${String(error.message).slice(0, 600)}`;
   if (error?.code === 'AI_STEP_TIMEOUT' && error.step === 'spatial') return '立体マップの設計が時間制限に達しました。エリア数や条件を減らして再試行できます。';
   if (error?.code === 'AI_STEP_TIMEOUT' && ['reading', 'planning'].includes(error.step)) return `${error.step === 'reading' ? '参考画像と指示の読み取り' : '自然地形の設計'}の応答を${Number.isFinite(error.timeoutMs) ? `${Math.round(error.timeoutMs / 1000)}秒` : '制限時間まで'}待ちましたが、完了しませんでした。入力が不正とは限りません。既存のマップは保持しています。時間を置いて再試行するか、AI設定で別のモデルを選べます。`;
+  if (error?.code === 'AI_STEP_TIMEOUT') return `${error.step === 'reviewing' ? '生成結果の照合' : '3D配置の生成'}の応答が時間制限に達しました。短い指示でも、AIが出力する配置データの量によって時間がかかります。生成案は適用していません。`;
   const status = Number(error?.status);
   const message = String(error?.message || '');
   if (error?.name === 'AbortError' || error?.name === 'TimeoutError') return '接続確認が時間切れになりました。通信環境やサーバーの起動状態を確認してください。';
@@ -49,7 +55,7 @@ export function explainAIError(error) {
   if (error instanceof SyntaxError) return 'AIの応答をマップとして読み込めませんでした。指示を短くするか、モデルを変更して再試行してください。';
   if (/Failed to fetch|NetworkError|Network request failed|Load failed|ローカルAIサーバー/i.test(message)) return '接続できませんでした。ネット接続、ローカルサーバーの起動、接続先URL、ブラウザの通信制限を確認してください。';
   if (error instanceof TypeError) return 'アプリ内部の処理でエラーが発生しました。発生した操作を確認する必要があります。';
-  return 'AIの処理に失敗しました。AI設定で接続を確認し、指示を短くして再試行してください。';
+  return 'AI処理を完了できませんでした。原因を特定できていません。表示された診断情報を開発者にお知らせください。';
 }
 
 export async function checkAIConnection({ mode, key, model, localUrl, signal }, fetcher = fetch) {

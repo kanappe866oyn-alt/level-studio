@@ -1,4 +1,5 @@
 import { abortable } from './abortable.js';
+import { readGenerationJSON } from './generationErrors.js';
 
 export const NATURE_AI_STEP_TIMEOUT_MS = 110_000;
 export const REFERENCE_READING_TIMEOUT_MS = 180_000;
@@ -33,7 +34,7 @@ export async function requestNatureJSON({ model, parts, signal, step, onProgress
     controller.signal.throwIfAborted();
     onProgress(`${NATURE_AI_STEPS[step]}の応答を受信しました。内容を検証しています。`);
     controller.signal.throwIfAborted();
-    return JSON.parse(result.response.text());
+    return readGenerationJSON(result.response);
   } catch (error) {
     if (error instanceof Error) error.natureStep = step;
     throw error;

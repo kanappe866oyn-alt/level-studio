@@ -12,7 +12,7 @@ test('complete JSON is used, receipt is reported once, and malformed responses f
   const result = await requestNatureJSON({ model, parts: ['reading prompt'], signal: new AbortController().signal, step: 'reading', onProgress: s => statuses.push(s) });
   assert.deepEqual(result, { waterEnabled: true }); assert.equal(statuses.length, 1); assert.ok(statuses[0].includes('受信'));
   model.generateContent = async () => ({ response: { text: () => 'incomplete' } });
-  await assert.rejects(requestNatureJSON({ model, parts: [], signal: new AbortController().signal, step: 'planning' }), SyntaxError);
+  await assert.rejects(requestNatureJSON({ model, parts: [], signal: new AbortController().signal, step: 'planning' }), error => error.code === 'AI_RESPONSE_FORMAT' && error.natureStep === 'planning');
 });
 
 test('stage deadline and user cancellation abort the request without accepting late output', async () => {

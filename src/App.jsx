@@ -1,3 +1,5 @@
+import { generationThinking } from './core/generationThinking.js';
+import { generationValidationError, readGenerationJSON } from './core/generationErrors.js';
 import { GENERATION_BRIEF_SCHEMA, generateFaithfulStage } from './core/generationFidelity';
 // src/App.jsx
 
@@ -1203,11 +1205,11 @@ ${serializeSceneForAI(objects)}
 
           };
 
-          const model = genAI.getGenerativeModel({ model: cloudModel, generationConfig: { temperature: 0.2, responseMimeType: "application/json", responseSchema: reviewSchema } });
+          const model = genAI.getGenerativeModel({ model: cloudModel, generationConfig: { ...generationThinking(cloudModel), temperature: 0.2, responseMimeType: "application/json", responseSchema: reviewSchema } });
 
           const result = await model.generateContent(prompt);
 
-          reviewData = JSON.parse(result.response.text());
+          reviewData = readGenerationJSON(result.response);
 
 
 
@@ -1400,8 +1402,8 @@ ${serializeSceneForAI(objects)}
           const genAI = new GoogleGenerativeAI(activeApiKey);
 
           if (useCityPlan || useNaturePlan || useSpatialPlan) {
-            const reader = useNaturePlan ? genAI.getGenerativeModel({ model: cloudModel, generationConfig: { maxOutputTokens: 4096, temperature: 0.1, responseMimeType: 'application/json', responseSchema: NATURE_BRIEF_SCHEMA } }) : null;
-            const planner = genAI.getGenerativeModel({ model: cloudModel, generationConfig: { maxOutputTokens: useSpatialPlan ? 8192 : 4096, temperature: 0.25, responseMimeType: 'application/json', responseSchema: useSpatialPlan ? SPATIAL_PLAN_SCHEMA : useNaturePlan ? NATURE_PLAN_SCHEMA : CITY_PLAN_SCHEMA } });
+            const reader = useNaturePlan ? genAI.getGenerativeModel({ model: cloudModel, generationConfig: { ...generationThinking(cloudModel), maxOutputTokens: 4096, temperature: 0.1, responseMimeType: 'application/json', responseSchema: NATURE_BRIEF_SCHEMA } }) : null;
+            const planner = genAI.getGenerativeModel({ model: cloudModel, generationConfig: { ...generationThinking(cloudModel), maxOutputTokens: useSpatialPlan ? 8192 : 4096, temperature: 0.25, responseMimeType: 'application/json', responseSchema: useSpatialPlan ? SPATIAL_PLAN_SCHEMA : useNaturePlan ? NATURE_PLAN_SCHEMA : CITY_PLAN_SCHEMA } });
             const generateStage = useSpatialPlan ? generatePlannedSpatialStage : useNaturePlan ? generatePlannedNature : generatePlannedCity;
             const planPrompt = useSpatialPlan ? spatialPlanningPrompt : useNaturePlan ? naturePlanningPrompt : cityPlanningPrompt;
             const stage = await generateStage({
@@ -1419,14 +1421,14 @@ ${serializeSceneForAI(objects)}
                 if (referenceImagePart) parts.push(referenceImagePart);
                 if (useSpatialPlan) return spatialRequestBudget.run(() => requestNatureJSON({ model: planner, parts, signal, step: 'spatial', onProgress: reportGenerationStep }), signal);
                 const response = await abortable(() => planner.generateContent(parts, { signal }), signal);
-                return JSON.parse(response.response.text());
+                return readGenerationJSON(response.response);
               },
             });
             resJson = stage;
             currentDraft = stage.objects;
           } else if (!isDiffMode) {
-            const reader = genAI.getGenerativeModel({ model: cloudModel, generationConfig: { maxOutputTokens: 6144, temperature: 0.1, responseMimeType: 'application/json', responseSchema: GENERATION_BRIEF_SCHEMA } });
-            const builder = genAI.getGenerativeModel({ model: cloudModel, generationConfig: { maxOutputTokens: 32768, temperature: 0.2, responseMimeType: 'application/json', responseSchema: fullObjectsSchema } });
+            const reader = genAI.getGenerativeModel({ model: cloudModel, generationConfig: { ...generationThinking(cloudModel), maxOutputTokens: 6144, temperature: 0.1, responseMimeType: 'application/json', responseSchema: GENERATION_BRIEF_SCHEMA } });
+            const builder = genAI.getGenerativeModel({ model: cloudModel, generationConfig: { ...generationThinking(cloudModel), maxOutputTokens: 32768, temperature: 0.2, responseMimeType: 'application/json', responseSchema: fullObjectsSchema } });
             resJson = await generateFaithfulStage({
               request: finalInputText, theme: stageTheme, mode: generationMode, hasImage: !!referenceImagePart,
               signal, basePrompt, onStatus: reportGenerationStep, normalize: validateObjects,
@@ -1447,11 +1449,11 @@ ${serializeSceneForAI(objects)}
 
           const targetSchema = isDiffMode ? diffSchema : fullObjectsSchema;
 
-          const model = genAI.getGenerativeModel({ model: cloudModel, generationConfig: { maxOutputTokens: 32768, temperature: 0.25, responseMimeType: "application/json", responseSchema: targetSchema } });
+          const model = genAI.getGenerativeModel({ model: cloudModel, generationConfig: { ...generationThinking(cloudModel), maxOutputTokens: 32768, temperature: 0.25, responseMimeType: "application/json", responseSchema: targetSchema } });
 
           const result = await abortable(() => model.generateContent(promptParts, { signal }), signal);
 
-          resJson = JSON.parse(result.response.text());
+          resJson = readGenerationJSON(result.response);
 
 
 
@@ -1471,13 +1473,13 @@ ${serializeSceneForAI(objects)}
 
 
 
-            const repairModel = genAI.getGenerativeModel({ model: cloudModel, generationConfig: { maxOutputTokens: 32768, temperature: 0.25, responseMimeType: "application/json", responseSchema: fullObjectsSchema } });
+            const repairModel = genAI.getGenerativeModel({ model: cloudModel, generationConfig: { ...generationThinking(cloudModel), maxOutputTokens: 32768, temperature: 0.25, responseMimeType: "application/json", responseSchema: fullObjectsSchema } });
 
             const repairResult = await abortable(async () => repairModel.generateContent([basePrompt, repairPrompt, ...(imageFile ? [await abortable(() => fileToGenerativePart(imageFile), signal)] : [])], { signal }), signal);
 
 
 
-            const repairJson = JSON.parse(repairResult.response.text());
+            const repairJson = readGenerationJSON(repairResult.response);
 
             currentDraft = repairJson.objects || currentDraft;
 
@@ -1550,7 +1552,7 @@ ${serializeSceneForAI(objects)}
 
         signal.throwIfAborted();
         const remainingIssues = inspectDraft(currentDraft, generationMode, { includeCollisions: false });
-        if (remainingIssues.length) throw new Error('品質検証を通過できませんでした。既存のシーンを維持します。\\n' + remainingIssues.slice(0, 6).join('\n'));
+        if (remainingIssues.length) throw generationValidationError('品質検証を通過できませんでした。\n' + remainingIssues.slice(0, 6).join('\n'));
 
         const finalRationale = resJson.design_rationale || resJson.designRationale;
 
@@ -1599,7 +1601,7 @@ ${serializeSceneForAI(objects)}
         attempt++;
 
         console.warn(`AIエラー (${attempt}回目):`, explainAIError(error));
-        console.warn('AI診断', JSON.stringify({ type: error instanceof TypeError ? 'TypeError' : error instanceof SyntaxError ? 'SyntaxError' : 'Error',
+        console.warn('AI診断', JSON.stringify({ code: /^[A-Z_]{1,40}$/.test(error?.code || '') ? error.code : null, type: error instanceof TypeError ? 'TypeError' : error instanceof SyntaxError ? 'SyntaxError' : 'Error',
           status: Number(error?.status) || null, step: Object.hasOwn(NATURE_AI_STEPS, error?.natureStep) ? error.natureStep : null }));
 
 
