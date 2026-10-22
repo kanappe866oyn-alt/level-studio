@@ -264,10 +264,12 @@ export const calculateRank = (objects, collisionCount) => {
 };
 
 export const fileToGenerativePart = async (file) => {
+  const { prepareReferenceImage } = await import('./referenceImage.js');
+  const prepared = await prepareReferenceImage(file);
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onloadend = () => resolve({ inlineData: { data: reader.result.split(',')[1], mimeType: file.type } });
+    reader.onload = () => resolve({ inlineData: { data: reader.result.split(',')[1], mimeType: prepared.type } });
     reader.onerror = reject;
-    reader.readAsDataURL(file);
+    reader.readAsDataURL(prepared);
   });
 };

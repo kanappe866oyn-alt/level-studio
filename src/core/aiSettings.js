@@ -38,7 +38,7 @@ export function explainAIError(error) {
   if (error?.code === 'AI_REQUEST_LIMIT') return error.message;
   if (error?.code === 'SPATIAL_VALIDATION') return `立体マップの設計条件を満たせませんでした。既存のステージを維持しています。${String(error.message).slice(0, 600)}`;
   if (error?.code === 'AI_STEP_TIMEOUT' && error.step === 'spatial') return '立体マップの設計が時間制限に達しました。エリア数や条件を減らして再試行できます。';
-  if (error?.code === 'AI_STEP_TIMEOUT' && ['reading', 'planning'].includes(error.step)) return `${error.step === 'reading' ? '参考画像と指示の読み取り' : '自然地形の設計'}の応答が時間制限に達しました。画像や指示を変えるか、時間を置いて再試行してください。`;
+  if (error?.code === 'AI_STEP_TIMEOUT' && ['reading', 'planning'].includes(error.step)) return `${error.step === 'reading' ? '参考画像と指示の読み取り' : '自然地形の設計'}の応答を${Number.isFinite(error.timeoutMs) ? `${Math.round(error.timeoutMs / 1000)}秒` : '制限時間まで'}待ちましたが、完了しませんでした。入力が不正とは限りません。既存のマップは保持しています。時間を置いて再試行するか、AI設定で別のモデルを選べます。`;
   const status = Number(error?.status);
   const message = String(error?.message || '');
   if (error?.name === 'AbortError' || error?.name === 'TimeoutError') return '接続確認が時間切れになりました。通信環境やサーバーの起動状態を確認してください。';
