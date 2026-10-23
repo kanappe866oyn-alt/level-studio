@@ -1944,6 +1944,8 @@ ${serializeSceneForAI(objects)}
             <div className="spinner" />
 
             <div>AIが空間構造を解析・再構築中...</div>
+            <p className="generation-overlay-status" role="status">{generationStatus}</p>
+            <button type="button" className="btn b-gray" onClick={handleCancelGeneration}>生成をキャンセル</button>
 
           </div>
 

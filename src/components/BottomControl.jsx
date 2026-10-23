@@ -13,7 +13,7 @@ export default function BottomControl({
   isPartialEdit, setIsPartialEdit,
   setAssemblyType,
   inputText, setInputText,
-  handleGenerate, isLoading, onCancelGeneration, generationStatus
+  handleGenerate, isLoading, generationStatus
 }) {
   // ★ 追加: パネルの高さ状態とドラッグ管理
   const [panelHeight, setPanelHeight] = useState(260);
@@ -170,7 +170,7 @@ export default function BottomControl({
         >
           {isLoading ? "生成中…" : (imageFile || !isPartialEdit) ? "新規生成" : "対話修正"}
         </button>
-        {isLoading && <button className="btn b-gray" onClick={onCancelGeneration}>キャンセル</button>}
+
       </div>
     </div>
   );

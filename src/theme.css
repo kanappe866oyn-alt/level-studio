@@ -1184,3 +1184,5 @@ textarea.inp { font-family: inherit; line-height: 1.5; }
 .toolbar-option-section strong { margin: 0 0 4px; }
 .toolbar-option-section .tbtn { width: 100%; min-height: 32px; text-align: left; }
 .toolbar-option-section .render-quality-control { display: flex; align-items: center; justify-content: space-between; min-height: 32px; }
+
+.generation-overlay-status { max-width: min(560px, 85%); margin: 0; font-size: 13px; line-height: 1.6; font-weight: 400; text-align: center; }
