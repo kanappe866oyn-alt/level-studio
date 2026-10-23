@@ -1178,3 +1178,9 @@ textarea.inp { font-family: inherit; line-height: 1.5; }
 .render-performance strong { color: #f3f7ff; font-size: 17px; }
 .render-performance small { line-height: 1.5; color: #aab9cb; }
 .render-performance details span { display: block; margin-top: 4px; }
+
+.toolbar-options-panel { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+.toolbar-option-section { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 4px 8px; border-left: 1px solid var(--border); }
+.toolbar-option-section strong { margin: 0 0 4px; }
+.toolbar-option-section .tbtn { width: 100%; min-height: 32px; text-align: left; }
+.toolbar-option-section .render-quality-control { display: flex; align-items: center; justify-content: space-between; min-height: 32px; }

@@ -74,7 +74,7 @@ export async function checkAIConnection({ mode, key, model, localUrl, signal }, 
   if (cloud && !body.supportedGenerationMethods?.includes('generateContent')) throw new Error('Selected model does not support generation');
   if (!cloud && body.service !== 'world-studio-local-ai') throw new Error('Unexpected local service');
   return cloud
-    ? 'キーと選択したモデルの情報を確認できました。実際の生成には、別途利用枠が必要です。'
+    ? '接続確認に成功しました。キーとモデル情報は有効です。生成の動作・混雑状況・残り利用枠は、この確認では判定していません。'
     : 'ローカルAIサーバーへの接続を確認できました。生成の動作は実際の生成時に確認します。';
 }
 

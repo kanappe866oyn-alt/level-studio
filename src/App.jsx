@@ -1,3 +1,4 @@
+import { createGenerationRequestCache } from './core/generationRequestCache.js';
 import { generationThinking } from './core/generationThinking.js';
 import { generationValidationError, readGenerationJSON } from './core/generationErrors.js';
 import { GENERATION_BRIEF_SCHEMA, generateFaithfulStage } from './core/generationFidelity';
@@ -1290,7 +1291,8 @@ ${serializeSceneForAI(objects)}
 
     const startTime = performance.now();
 
-    let attempt = 0; const maxAttempts = 3; let success = false;
+    const requestGenerationJSON = createGenerationRequestCache(requestNatureJSON);
+    let attempt = 0; const maxAttempts = 2; let success = false;
 
 
 
@@ -1419,7 +1421,7 @@ ${serializeSceneForAI(objects)}
                 // Nature planning receives the validated reading in its prompt.
                 if (useNaturePlan) return requestNatureJSON({ model: planner, parts, signal, step: 'planning', onProgress: reportGenerationStep });
                 if (referenceImagePart) parts.push(referenceImagePart);
-                if (useSpatialPlan) return spatialRequestBudget.run(() => requestNatureJSON({ model: planner, parts, signal, step: 'spatial', onProgress: reportGenerationStep }), signal);
+                if (useSpatialPlan) return spatialRequestBudget.run(() => requestGenerationJSON({ model: planner, parts, signal, step: 'spatial', onProgress: reportGenerationStep }), signal);
                 const response = await abortable(() => planner.generateContent(parts, { signal }), signal);
                 return readGenerationJSON(response.response);
               },
@@ -1432,8 +1434,8 @@ ${serializeSceneForAI(objects)}
             resJson = await generateFaithfulStage({
               request: finalInputText, theme: stageTheme, mode: generationMode, hasImage: !!referenceImagePart,
               signal, basePrompt, onStatus: reportGenerationStep, normalize: validateObjects,
-              requestBrief: prompt => requestNatureJSON({ model: reader, parts: [prompt, ...(referenceImagePart ? [referenceImagePart] : [])], signal, step: 'reading', onProgress: reportGenerationStep }),
-              requestDraft: prompt => requestNatureJSON({ model: builder, parts: [prompt, ...(referenceImagePart ? [referenceImagePart] : [])], signal, step: 'drafting', onProgress: reportGenerationStep }),
+              requestBrief: prompt => requestGenerationJSON({ model: reader, parts: [prompt, ...(referenceImagePart ? [referenceImagePart] : [])], signal, step: 'reading', onProgress: reportGenerationStep }),
+              requestDraft: prompt => requestGenerationJSON({ model: builder, parts: [prompt, ...(referenceImagePart ? [referenceImagePart] : [])], signal, step: 'drafting', onProgress: reportGenerationStep }),
               validateStage: (draft, raw) => {
                 const issues = inspectDraft(draft, generationMode, { includeCollisions: false, includeNavigation: !raw });
                 if (!raw && !issues.length && draft.some(o => o.role === 'spawn') && draft.some(o => ['goal', 'checkpoint', 'exit', 'objective'].includes(o.role) || (o.role === 'spawn' && draft.filter(q => q.role === 'spawn').length > 1))) {
@@ -1608,7 +1610,7 @@ ${serializeSceneForAI(objects)}
 
         if (shouldRetryAIError(error) && attempt < maxAttempts) {
 
-          console.log('AIサーバーが一時的に利用できません（503）。3秒待って再試行します...');
+          reportGenerationStep('Google側が一時的に利用できません（503）。完了済みの読み取りを保持し、3秒後に一度だけ再試行します。');
 
           try { await abortableDelay(3000, signal); }
           catch { setGenerationStatus(interruptedGenerationStatus()); break; }

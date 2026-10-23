@@ -28,21 +28,22 @@ export default function TopToolbar({
     }}>
       <button type="button" className="tbtn" ref={toggle} aria-expanded={optionsOpen} aria-controls={optionsId} onClick={() => setOptionsOpen(value => !value)}>その他の操作</button>
       {optionsOpen && <div id={optionsId} className="toolbar-options-panel" role="group" aria-label="その他の操作">
-        <strong>開く・確認する</strong>
+        <section className="toolbar-option-section"><strong>ファイル・ヘルプ</strong>
         <button type="button" className="tbtn" onClick={() => { setOptionsOpen(false); fileInputRef.current.click(); }}>開く</button>
         <button type="button" className="tbtn" onClick={run(onOpenGuide)}>操作ガイド</button>
         <button type="button" className="tbtn" onClick={run(onOpenSizePreview)}>サイズ確認</button>
-        <strong>作る・仕上げる</strong>
+        <button type="button" className="tbtn" onClick={run(() => setIsEditorStarted(false))}>トップへ</button>
+        </section><section className="toolbar-option-section"><strong>ステージ制作</strong>
         <button type="button" className="tbtn" onClick={run(onOpenTerrainBuilder)} disabled={buildingDisabled}>立体ステージ</button>
         <button type="button" className="tbtn" onClick={run(onOpenNatureBuilder)} disabled={buildingDisabled}>自然ステージ</button>
         {onFinishSpatial && <button type="button" className="tbtn" onClick={run(onFinishSpatial)} disabled={buildingDisabled}>外観を仕上げる</button>}
-        <strong>表示</strong>
+        </section><section className="toolbar-option-section"><strong>表示設定</strong>
         <button type="button" className={`tbtn ${showGrid && !gridDisabled ? 'on' : ''}`} aria-label="編集用の補助線" aria-pressed={showGrid && !gridDisabled} onClick={run(onToggleGrid)} disabled={gridDisabled}>補助線</button>
         <label className="render-quality-control">表示品質 <select aria-label="表示品質" value={renderQuality} onChange={event => onRenderQualityChange(event.target.value)}>
           <option value="light">軽量</option><option value="standard">標準</option><option value="high">高品質</option>
         </select></label>
         <button type="button" className={`tbtn ${measuringPerformance ? 'on' : ''}`} aria-pressed={measuringPerformance} onClick={run(onTogglePerformance)}>表示速度を確認</button>
-        <button type="button" className="tbtn" onClick={run(() => setIsEditorStarted(false))}>トップへ</button>
+        </section>
       </div>}
     </div>
     <input type="file" ref={fileInputRef} accept=".json" onChange={handleLoadProject} style={{ display: 'none' }} />

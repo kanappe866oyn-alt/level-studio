@@ -23,7 +23,7 @@ test('cloud check sends key only in header and never generates content', async (
     assert.equal(options.headers['x-goog-api-key'], 'sample-key');
     return { ok: true, json: async () => ({ supportedGenerationMethods: ['generateContent'] }) };
   });
-  assert.match(result, /別途利用枠/);
+  assert.match(result, /この確認では判定していません/);
 });
 
 test('missing keys and HTTP errors are distinguished without echoing credentials', async () => {

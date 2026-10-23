@@ -11,7 +11,7 @@ export default function BottomControl({
   stageTheme, setStageTheme,
   imageInputRef, handleImageChange,
   isPartialEdit, setIsPartialEdit,
-  assemblyType, setAssemblyType,
+  setAssemblyType,
   inputText, setInputText,
   handleGenerate, isLoading, onCancelGeneration, generationStatus
 }) {
@@ -123,22 +123,6 @@ export default function BottomControl({
           今のステージを修正
         </label>
       </div>
-
-      {aiMode === 'gemini' && (
-        <details className="generation-advanced">
-          <summary>高度な生成設定</summary>
-          <div className="brow">
-          <select className="sel" aria-label="生成方式" value={assemblyType} disabled={isLoading} onChange={e => { setAssemblyType(e.target.value); if (e.target.value !== 'direct') setIsPartialEdit(false); }}>
-            <option value="direct">通常の生成</option>
-            {generationMode !== 'platforming' && <option value="city">都市を設計して組み立てる</option>}
-            {generationMode !== 'combat' && <option value="nature">自然地形を設計して組み立てる</option>}
-            {generationMode === 'free' && <option value="spatial">立体マップを設計して組み立てる</option>}
-          </select>
-          {assemblyType === 'direct' && !isPartialEdit && <span style={{ fontSize: '11px' }}>条件と空間構成を整理し、最終配置の個数・寸法・位置関係を確認します。</span>}
-          {assemblyType !== 'direct' && <span style={{ fontSize: '11px' }}>{assemblyType === 'spatial' ? '部屋・高台・階段・上下の通路を設計し、歩行と視線を確認。' : assemblyType === 'nature' ? '両岸の段状地形・橋・階段を新規生成。' : '4街区・道路・高台・階段を新規生成。'}既存のステージを置き換えます。</span>}
-          </div>
-        </details>
-      )}
 
       <PromptPresetBar 
         generationMode={generationMode} 
