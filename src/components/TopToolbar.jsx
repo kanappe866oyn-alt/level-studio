@@ -1,10 +1,11 @@
+import { LOCAL_PALETTES } from '../core/localAppearance.js';
 import { useEffect, useId, useRef, useState } from 'react';
 
 export default function TopToolbar({
   editorMode, setEditorMode, transformType, setTransformType, hasSelection,
   handleSaveProject, fileInputRef, handleLoadProject, setIsEditorStarted,
   onOpenSizePreview, onOpenGuide, onOpenNatureBuilder, onOpenTerrainBuilder, buildingDisabled, autosaveStatus, autosaveFailed,
-  onFinishSpatial, canvasFocused, onToggleCanvasFocus, showGrid, onToggleGrid, gridDisabled,
+  onFinishSpatial, onLocalPalette, canvasFocused, onToggleCanvasFocus, showGrid, onToggleGrid, gridDisabled,
   renderQuality, onRenderQualityChange, measuringPerformance, onTogglePerformance
 }) {
   const [optionsOpen, setOptionsOpen] = useState(false);
@@ -37,6 +38,13 @@ export default function TopToolbar({
         <button type="button" className="tbtn" onClick={run(onOpenTerrainBuilder)} disabled={buildingDisabled}>立体ステージ</button>
         <button type="button" className="tbtn" onClick={run(onOpenNatureBuilder)} disabled={buildingDisabled}>自然ステージ</button>
         {onFinishSpatial && <button type="button" className="tbtn" onClick={run(onFinishSpatial)} disabled={buildingDisabled}>外観を仕上げる</button>}
+        {onLocalPalette && <label className="local-palette-control">配色を変更（AI通信なし）
+          <select aria-label="配色を変更（AI通信なし）" className="sel" value="" disabled={buildingDisabled} onChange={event => { onLocalPalette(event.target.value); setOptionsOpen(false); }}>
+            <option value="" disabled>配色を選択</option>
+            {LOCAL_PALETTES.map(palette => <option key={palette.id} value={palette.id}>{palette.label}</option>)}
+          </select>
+          <small>構造・モデルは維持。元の外観の別案です。</small>
+        </label>}
         </section><section className="toolbar-option-section"><strong>表示設定</strong>
         <button type="button" className={`tbtn ${showGrid && !gridDisabled ? 'on' : ''}`} aria-label="編集用の補助線" aria-pressed={showGrid && !gridDisabled} onClick={run(onToggleGrid)} disabled={gridDisabled}>補助線</button>
         <label className="render-quality-control">表示品質 <select aria-label="表示品質" value={renderQuality} onChange={event => onRenderQualityChange(event.target.value)}>

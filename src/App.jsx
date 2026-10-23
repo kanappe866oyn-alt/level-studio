@@ -1,3 +1,5 @@
+import { createPairedStageDesigner } from './core/pairedStageDesign.js';
+import { applyLocalPalette } from './core/localAppearance.js';
 import { createGenerationRequestCache } from './core/generationRequestCache.js';
 import { generationThinking } from './core/generationThinking.js';
 import { generationValidationError, readGenerationJSON } from './core/generationErrors.js';
@@ -508,6 +510,15 @@ export default function App({ initialWorkspace: preparedWorkspace = null, initia
 
 
   const getObjIndex = (id) => objects.findIndex(o => o.id === id);
+
+  const handleLocalPalette = paletteId => {
+    if (isLoading || isPlaying || !objects.length) return;
+    const result = applyLocalPalette(objects, paletteId, designRationale);
+    if (result.changed) updateObjectsWithHistory(result.objects);
+    setGenerationStatus(result.changed
+      ? result.label + 'に配色を変更しました（AI通信なし）。構造・屋根の副色は維持しています。Undoで戻せます。' + (result.protectedCount ? ' 明示された必須色は保持しました。' : '')
+      : '変更対象がありません。指定済みの必須色と独自モデルは保持しています。');
+  };
 
   const handleFinishSpatial = () => {
     const plan = designRationale?.spatial_design?.plan;
@@ -1429,13 +1440,19 @@ ${serializeSceneForAI(objects)}
             resJson = stage;
             currentDraft = stage.objects;
           } else if (!isDiffMode) {
-            const reader = genAI.getGenerativeModel({ model: cloudModel, generationConfig: { ...generationThinking(cloudModel), maxOutputTokens: 6144, temperature: 0.1, responseMimeType: 'application/json', responseSchema: GENERATION_BRIEF_SCHEMA } });
+            const designer = genAI.getGenerativeModel({ model: cloudModel, generationConfig: { ...generationThinking(cloudModel), maxOutputTokens: 32768, temperature: 0.2, responseMimeType: 'application/json', responseSchema: {
+              type: 'object', properties: { brief: GENERATION_BRIEF_SCHEMA, stage: fullObjectsSchema }, required: ['brief', 'stage'],
+            } } });
             const builder = genAI.getGenerativeModel({ model: cloudModel, generationConfig: { ...generationThinking(cloudModel), maxOutputTokens: 32768, temperature: 0.2, responseMimeType: 'application/json', responseSchema: fullObjectsSchema } });
+            const pairedDesigner = createPairedStageDesigner({ basePrompt,
+              requestDesign: prompt => requestGenerationJSON({ timeoutMs: 180000, model: designer, parts: [prompt, ...(referenceImagePart ? [referenceImagePart] : [])], signal, step: 'drafting', onProgress: reportGenerationStep }),
+              requestRepair: prompt => requestGenerationJSON({ model: builder, parts: [prompt, ...(referenceImagePart ? [referenceImagePart] : [])], signal, step: 'drafting', onProgress: reportGenerationStep }),
+            });
             resJson = await generateFaithfulStage({
               request: finalInputText, theme: stageTheme, mode: generationMode, hasImage: !!referenceImagePart,
               signal, basePrompt, onStatus: reportGenerationStep, normalize: validateObjects,
-              requestBrief: prompt => requestGenerationJSON({ model: reader, parts: [prompt, ...(referenceImagePart ? [referenceImagePart] : [])], signal, step: 'reading', onProgress: reportGenerationStep }),
-              requestDraft: prompt => requestGenerationJSON({ model: builder, parts: [prompt, ...(referenceImagePart ? [referenceImagePart] : [])], signal, step: 'drafting', onProgress: reportGenerationStep }),
+              requestBrief: pairedDesigner.requestBrief,
+              requestDraft: pairedDesigner.requestDraft,
               validateStage: (draft, raw) => {
                 const issues = inspectDraft(draft, generationMode, { includeCollisions: false, includeNavigation: !raw });
                 if (!raw && !issues.length && draft.some(o => o.role === 'spawn') && draft.some(o => ['goal', 'checkpoint', 'exit', 'objective'].includes(o.role) || (o.role === 'spawn' && draft.filter(q => q.role === 'spawn').length > 1))) {
@@ -1798,6 +1815,7 @@ ${serializeSceneForAI(objects)}
         <TopToolbar
           hasSelection={selectedIds.length > 0 || isDummySelected}
           onFinishSpatial={spatialPlan ? handleFinishSpatial : null}
+          onLocalPalette={objects.length && !isPlaying ? handleLocalPalette : null}
           renderQuality={renderQuality}
           onRenderQualityChange={value => { renderStatsRef.current = null; setRenderQuality(value); }}
           measuringPerformance={measuringPerformance}
