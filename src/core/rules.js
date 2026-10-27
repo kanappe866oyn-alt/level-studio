@@ -64,8 +64,17 @@ const normalizeRotation = (rotArray) => {
   return rotArray.map(v => Math.abs(v) > Math.PI * 2 ? (v * Math.PI) / 180 : v);
 };
 
-const normalizePoints = (points) => {
-  if (!Array.isArray(points) || points.length < 3) return [[-10,0,-10], [0,0,0], [10,0,10]];
+// A road given without its own centerline keeps the place it was given: a line along the long side of its
+// position and size. The old fixed diagonal crossed rivers and bridges wherever the road really was.
+const centerline = (pos, size, rot) => {
+  if (!Array.isArray(pos) || pos.length !== 3 || !Array.isArray(size) || size.length !== 3 || ![...pos, ...size].every(Number.isFinite)) return null;
+  const alongX = size[0] > size[2], half = Math.max(size[0], size[2]) / 2, yaw = Number(rot?.[1]) || 0;
+  const [dx, dz] = alongX ? [Math.cos(yaw), -Math.sin(yaw)] : [Math.sin(yaw), Math.cos(yaw)];
+  return [-1, 0, 1].map(k => [clamp(pos[0] + dx * half * k, -50, 50), clamp(pos[1], -10, 50), clamp(pos[2] + dz * half * k, -50, 50)]);
+};
+
+const normalizePoints = (points, fallback) => {
+  if (!Array.isArray(points) || points.length < 3) return centerline(fallback?.pos, fallback?.size, fallback?.rot) ?? [[-10,0,-10], [0,0,0], [10,0,10]];
   return points.slice(0, 12).map((p) => [
     clamp(safeNumber(p?.[0], 0), -50, 50),
     clamp(safeNumber(p?.[1], 0), -10, 50),
@@ -128,7 +137,7 @@ export const validateObjects = (data) => {
     const id = obj.id || crypto.randomUUID();
     if (prefab.floorLike || (pos[1] <= 0 && size[0] > 8 && size[2] > 8)) hasFloor = true;
 
-    const points = (type === 'spline') ? normalizePoints(obj.points) : undefined;
+    const points = (type === 'spline') ? normalizePoints(obj.points, { pos: Array.isArray(obj.pos) && obj.pos.length === 3 ? pos : null, size: obj.size, rot }) : undefined;
     const customModelUrl = obj.customModelUrl || null;
 
     // ★ オリジナル色維持：originalColorフラグで一元管理

@@ -460,6 +460,9 @@ function GameObject({ obj, transformType, selectedIds, onSelect, onTransformEnd,
 
   const meshRef = useRef();
 
+  // A road lies on the ground as a ribbon of its own width; a full round tube would stand up as a wall.
+  const roadRadius = obj.role === 'path' ? Math.min(2, Math.max(0.5, (obj.size?.[0] ?? 4) / 2)) : 2;
+  const roadFlatness = obj.role === 'path' ? 0.08 : 1;
   const SplineTube = ({ points, color }) => {
     const pointsStr = JSON.stringify(points);
     const curve = useMemo(() => {
@@ -471,13 +474,14 @@ function GameObject({ obj, transformType, selectedIds, onSelect, onTransformEnd,
     return (
       <mesh
         name={`[${obj.role}]_${obj.name}`}
+        scale={[1, roadFlatness, 1]}
         onClick={(e) => {
           if (e.delta > 2 || window.isDraggingGizmo) return;
           e.stopPropagation();
           onSelect(obj.id, e.shiftKey);
         }}
       >
-        <tubeGeometry args={[curve, 64, 2, 8, false]} />
+        <tubeGeometry args={[curve, 64, roadRadius, 8, false]} />
         <meshStandardMaterial color={color} roughness={0.7} emissive={isSelected ? "#ffff00" : "black"} emissiveIntensity={isSelected ? 0.4 : 0} />
       </mesh>
     );

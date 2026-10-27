@@ -2,7 +2,7 @@ import { packager } from '@electron/packager';
 import { cp, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
-const root = process.cwd(), version = '0.1.37';
+const root = process.cwd(), version = '0.1.38';
 const bundleIndex = process.argv.indexOf('--bundle');
 if (bundleIndex >= 0 && !process.argv[bundleIndex + 1]) throw new Error('--bundle requires a built application directory');
 const bundleRoot = bundleIndex < 0 ? path.join(root, 'dist') : path.resolve(process.argv[bundleIndex + 1]);

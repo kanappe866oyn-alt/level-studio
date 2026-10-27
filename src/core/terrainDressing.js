@@ -49,6 +49,9 @@ export function dressGeneratedTerrain({ objects, brief, compilation, mode, norma
   // never closes the route the walking check found.
   const accessZones = objects.filter(o => ['bridge', 'climb', 'platform'].includes(o.role) && o.type !== 'spline').map(o => { const b = getBounds(o); return { minX: b.minX - 3, maxX: b.maxX + 3, minZ: b.minZ - 3, maxZ: b.maxZ + 3 }; });
 
+  // Water is walkable-unsafe, so it is not a collision part, but nothing may be grown into it either.
+  const waters = objects.filter(o => o.role === 'water' && o.type !== 'spline' && Array.isArray(o.pos) && Array.isArray(o.size)).map(getBounds);
+
   const half = [terrain.size[0] / 2, terrain.size[2] / 2], centre = [terrain.pos[0], terrain.pos[2]];
   const slopeAt = (x, z, d = 0.8) => {
     const ys = [[d, 0], [-d, 0], [0, d], [0, -d]].map(([dx, dz]) => surfaceTop(terrain, x + dx, z + dz));
@@ -64,6 +67,8 @@ export function dressGeneratedTerrain({ objects, brief, compilation, mode, norma
     if (pads.some(p => Math.abs(x - p.x) < p.width / 2 + radius * 0.8 + extra && Math.abs(z - p.z) < p.depth / 2 + radius * 0.8 + extra)) return false;
     if (spots.some(s => Math.hypot(x - s.pos[0], z - s.pos[2]) < radius + 2.5)) return false;
     if (accessZones.some(a => x + radius > a.minX && x - radius < a.maxX && z + radius > a.minZ && z - radius < a.maxZ)) return false;
+    const own = getBounds(object);
+    if (waters.some(w => own.maxX + 0.2 > w.minX && own.minX - 0.2 < w.maxX && own.maxZ + 0.2 > w.minZ && own.minZ - 0.2 < w.maxZ)) return false;
     const inflated = { ...object, size: [object.size[0] + 0.4, object.size[1], object.size[2] + 0.4] };
     return !blockers.some(part => boxesOverlap(inflated, part)) && !accepted.some(o => boxesOverlap(inflated, o));
   };
