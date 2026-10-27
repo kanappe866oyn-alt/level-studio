@@ -40,19 +40,21 @@ export function inspectExplicitTerrainDirections(objects, compilation, request) 
     });
     if(!found)issues.push(`指示「${m[0]}」に一致する正の尾根の端部がありません。北=-Z、南=+Z。尾根の南北位置と端部の曲がる向きを同時に修正してください。`);
   }
-  for(const sentence of request.split(/[。！？\n]/)) {
-    if(/ではなく|ではない|不要|以外|建物の|橋の|広場の|平場の|尾根の|谷の/.test(sentence))continue;
-    const matches=[...sentence.matchAll(/(?<![北南東西])([北南東西])(?:側)?の(?:小さな|大きな|広い|狭い|平らな|高さ[0-9０-９.]+[mｍ]の)?(平場|広場)/g)];
-    for(const match of matches){
+  for(const match of requestedDirectionalPlazas(request)){
       const direction=match[1];
       const pads=compilation.source.pads || [];
       const candidates=pads.filter(p=>p.width>=4&&p.depth>=4&&
         (direction==='北'?p.z<ground.pos[2]:direction==='南'?p.z>ground.pos[2]:direction==='東'?p.x>ground.pos[0]:p.x<ground.pos[0]));
       const open=candidates.some(p=>inspectTerrainPadElevation(objects,{source:{pads:[p]}},{evidence:direction,comparison:'exact',value:p.height}).passed);
       if(!open)issues.push(`指示「${match[0]}」に対応する開けた地形の平場がありません。北=-Z、南=+Z、東=+X、西=-X。地面中心(${ground.pos[0]},${ground.pos[2]})からの位置と接続を修正してください。`);
-    }
   }
   return [...new Set(issues)];
+}
+
+// Plazas the request places by an absolute direction (「南側の広場」), as matches: [phrase, direction, kind].
+export function requestedDirectionalPlazas(request){
+  return String(request||'').split(/[。！？\n]/).filter(sentence=>!/ではなく|ではない|不要|以外|建物の|橋の|広場の|平場の|尾根の|谷の/.test(sentence))
+    .flatMap(sentence=>[...sentence.matchAll(/(?<![北南東西])([北南東西])(?:側)?の(?:小さな|大きな|広い|狭い|平らな|高さ[0-9０-９.]+[mｍ]の)?(平場|広場)/g)]);
 }
 
 // Measure authored open ground regions on the final mesh. A plaza does not need

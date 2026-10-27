@@ -1,6 +1,8 @@
 import ASSETS from '../assets.json' with { type: 'json' };
 import { getModelDefault } from './modelCatalog.js';
 import { compileTerrainDesign } from './terrainDesign.js';
+import { requestedDirectionalPlazas } from './terrainRequirements.js';
+import { sampleTerrainRelief } from './terrainRelief.js';
 
 // Retain only the explicitly authored, unique terrain domain within one
 // generation attempt. Never infer a domain from a template or a bounding box.
@@ -134,8 +136,15 @@ export function clearRoadsOfDecoration(draft) {
 // floor it meant; pointing there changes nothing else.
 export function redirectMissingTerrainSupport(draft) {
   const objects = draft?.objects;
-  if (!Array.isArray(objects) || draft?.terrainDesign?.enabled === true) return { draft, changes: [] };
+  if (!Array.isArray(objects)) return { draft, changes: [] };
   const grounds = objects.filter(o => o?.role === 'ground');
+  // With a terrain design the ground's walking surface is the generated terrain (the ground box itself is moved
+  // under it), so a thing set on the ground stands on that terrain, as building plots already read it.
+  if (draft?.terrainDesign?.enabled === true) {
+    const onGround = grounds.length === 1 ? objects.filter(o => o && o !== grounds[0] && o.supportId === grounds[0].id) : [];
+    if (!onGround.length) return { draft, changes: [] };
+    return { draft: { ...draft, objects: objects.map(o => onGround.includes(o) ? { ...o, supportId: '__generated_terrain' } : o) }, changes: onGround.map(o => ({ kind: 'groundSupportToTerrain', objectId: o.id, reason: `${o.id}の接地先が地面${grounds[0].id}だったため、その地面の表面である生成地形へ付け替え` })) };
+  }
   const stale = objects.filter(o => o?.supportId === '__generated_terrain');
   if (grounds.length !== 1 || !stale.length) return { draft, changes: [] };
   const next = objects.map(o => o?.supportId === '__generated_terrain' ? { ...o, supportId: grounds[0].id } : o);
@@ -339,10 +348,17 @@ export function dropPlatformsDuplicatingPads(draft) {
     Math.abs(o.pos[0] - p.x) <= 1 + Math.abs(p.width - o.size[0]) / 2 && Math.abs(o.pos[2] - p.z) <= 1 + Math.abs(p.depth - o.size[2]) / 2 &&
     Math.abs(o.size[0] - p.width) <= 2 && Math.abs(o.size[2] - p.depth) <= 2 && Math.abs(o.pos[1] + o.size[1] / 2 - p.height) <= 0.6);
   const dropped = draft.objects.filter(same);
-  if (!dropped.length) return { draft, changes: [] };
-  const ids = new Set(dropped.map(o => o.id));
-  const objects = draft.objects.filter(o => !ids.has(o.id)).map(o => ids.has(o?.supportId) ? { ...o, supportId: '__generated_terrain' } : o);
-  return { draft: { ...draft, objects }, changes: dropped.map(o => ({ kind: 'platformDuplicatingPadDropped', objectId: o.id, reason: `${o.id}は同じ位置・高さの地形の平場と二重になる足場だったため、平場を台地として取り除いた` })) };
+  // A thin slab (paving) laid mostly over a plaza, standing on nothing, is that plaza's surface: it is
+  // seated on the plaza (its colour kept) instead of hovering up to 0.6 m above it with a gap underneath.
+  const share = (o, p) => { const yaw = o.rot?.[1] || 0, w = Math.abs(Math.cos(yaw)) * o.size[0] + Math.abs(Math.sin(yaw)) * o.size[2], d = Math.abs(Math.sin(yaw)) * o.size[0] + Math.abs(Math.cos(yaw)) * o.size[2];
+    return Math.max(0, Math.min(o.pos[0] + w / 2, p.x + p.width / 2) - Math.max(o.pos[0] - w / 2, p.x - p.width / 2)) * Math.max(0, Math.min(o.pos[2] + d / 2, p.z + p.depth / 2) - Math.max(o.pos[2] - d / 2, p.z - p.depth / 2)) / (w * d || 1); };
+  const hovering = draft.objects.filter(o => o?.role === 'platform' && !o.supportId && !o.designFeature && o.size?.[1] <= 0.5 && Array.isArray(o.pos) && Array.isArray(o.size) && ![...o.pos, ...o.size].some(v => !Number.isFinite(v)) && !named.has(o.id) && !(o.rot || []).some((v, i) => i !== 1 && v) && design.pads.some(p =>
+    [p.x, p.z, p.width, p.depth, p.height].every(Number.isFinite) && share(o, p) >= 0.5 && o.pos[1] + o.size[1] / 2 - p.height > 0.15 && o.pos[1] + o.size[1] / 2 - p.height <= 0.6));
+  if (!dropped.length && !hovering.length) return { draft, changes: [] };
+  const ids = new Set(dropped.map(o => o.id)), seated = new Set(hovering.map(o => o.id));
+  const objects = draft.objects.filter(o => !ids.has(o.id)).map(o => seated.has(o.id) ? Object.fromEntries(Object.entries({ ...o, supportId: '__generated_terrain' }).filter(([key]) => key !== 'surfaceY')) : ids.has(o?.supportId) ? { ...o, supportId: '__generated_terrain' } : o);
+  return { draft: { ...draft, objects }, changes: [...dropped.map(o => ({ kind: 'platformDuplicatingPadDropped', objectId: o.id, reason: `${o.id}は同じ位置・高さの地形の平場と二重になる足場だったため、平場を台地として取り除いた` })),
+    ...hovering.map(o => ({ kind: 'pavingSeatedOnPad', objectId: o.id, reason: `${o.id}は同じ大きさの地形の平場の上に浮いた薄い床だったため、平場の上面に敷いた（色・大きさは変更なし）` }))] };
 }
 
 // A stair the model drew on top of a terrain road that already climbs there says the same thing
@@ -462,6 +478,84 @@ export function separateNearbyPads(draft) {
     if (!chosen) continue;
     a[length] -= chosen.cutA; a[axis] -= direction * chosen.cutA / 2; b[length] -= chosen.cutB; b[axis] += direction * chosen.cutB / 2;
     changes.push({ kind: 'padsSeparated', reason: `高さの違う平場${i + 1}と${j + 1}が周囲0.8m以内で接していたため、向かい合う辺を${chosen.cutA.toFixed(1)}mと${chosen.cutB.toFixed(1)}m縮めて離した（高さと建物の足場は変更なし）`, axis, cutA: chosen.cutA, cutB: chosen.cutB });
+  }
+  return changes.length ? { draft: { ...draft, terrainDesign: next }, changes } : { draft, changes: [] };
+}
+
+// A plaza laid across a river holds the ground at its own height over the channel and dams the water (the river
+// vanishes under a mound). The plaza is moved straight off the river, the shortest way, or else trimmed back from it;
+// one that can do neither within the ground keeps its place and the terrain inspection still reports it.
+export function movePadsOffRivers(draft) {
+  const design = draft?.terrainDesign, ground = (Array.isArray(draft?.objects) ? draft.objects : []).find(o => o?.role === 'ground');
+  if (design?.enabled !== true || !Array.isArray(design.pads) || !Array.isArray(design.rivers) || !design.rivers.length || !ground || ![...ground.pos, ...ground.size].every(Number.isFinite)) return { draft, changes: [] };
+  const next = structuredClone(design), changes = [];
+  const [gx, , gz] = ground.pos, [gw, , gd] = ground.size;
+  const segments = next.rivers.flatMap(river => (river?.points || []).slice(1).map((b, k) => ({ a: river.points[k], b, half: Math.max(1.5, Math.min(7, river.width || 0) / 2) + 1 }))).filter(s => [s.a?.x, s.a?.z, s.b?.x, s.b?.z].every(Number.isFinite));
+  // Distance from a segment to a rectangle, by sampling the rectangle 1 m apart (rivers are a few metres wide).
+  const wet = p => segments.some(s => { const dx = s.b.x - s.a.x, dz = s.b.z - s.a.z, len2 = dx * dx + dz * dz || 1;
+    for (let u = 0; u <= Math.ceil(p.width); u++) for (let v = 0; v <= Math.ceil(p.depth); v++) {
+      const x = p.x - p.width / 2 + p.width * u / Math.ceil(p.width), z = p.z - p.depth / 2 + p.depth * v / Math.ceil(p.depth), t = Math.max(0, Math.min(1, ((x - s.a.x) * dx + (z - s.a.z) * dz) / len2));
+      if (Math.hypot(x - s.a.x - t * dx, z - s.a.z - t * dz) < s.half) return true;
+    }
+    return false; });
+  const inside = p => Math.abs(p.x - gx) + p.width / 2 <= gw / 2 - 0.2 && Math.abs(p.z - gz) + p.depth / 2 <= gd / 2 - 0.2;
+  next.pads.forEach((pad, index) => {
+    if (pad?.from || ![pad?.x, pad?.z, pad?.width, pad?.depth, pad?.height].every(Number.isFinite) || !wet(pad)) return;
+    let placed = null;
+    search: for (let step = 0.5; step <= 20; step += 0.5) for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const moved = { ...pad, x: +(pad.x + dx * step).toFixed(2), z: +(pad.z + dz * step).toFixed(2) };
+      if (inside(moved) && !wet(moved)) { placed = moved; break search; }
+    }
+    if (!placed) for (const axis of ['width', 'depth']) for (const sign of [-1, 1]) {
+      for (let cut = 0.5; pad[axis] - cut >= 5 && !placed; cut += 0.5) {
+        const key = axis === 'width' ? 'x' : 'z', trimmed = { ...pad, [axis]: +(pad[axis] - cut).toFixed(2), [key]: +(pad[key] + sign * cut / 2).toFixed(2) };
+        if (!wet(trimmed)) placed = trimmed;
+      }
+    }
+    if (!placed) return;
+    next.pads[index] = placed;
+    changes.push({ kind: 'padMovedOffRiver', index, before: pad, after: placed, reason: `平場${index + 1}(${pad.x}, ${pad.z})が川の流路に重なり、水をせき止める盛り土になっていたため、${placed.width !== pad.width || placed.depth !== pad.depth ? `川側を${placed.width}x${placed.depth}mまで縮めた` : `(${placed.x}, ${placed.z})へ川の外まで動かした`}（高さは変更なし）` });
+  });
+  return changes.length ? { draft: { ...draft, terrainDesign: next }, changes } : { draft, changes: [] };
+}
+
+// A plaza the request places by direction (「入口は南側の広場」) that the design leaves out: the model has usually put the
+// entrance (spawn) or a road end there and drawn no flat ground under it. A level plaza is laid at that spot, at the height
+// of the road end or the ground there, where it fits on the ground clear of water and of flats at another height. With no
+// entrance or road end on that side there is nothing to place it by, and the inspection still asks the model for it.
+export function addRequestedDirectionalPlazas(draft, request) {
+  const design = draft?.terrainDesign, ground = (Array.isArray(draft?.objects) ? draft.objects : []).find(o => o?.role === 'ground');
+  if (design?.enabled !== true || !ground || ![...ground.pos, ...ground.size].every(Number.isFinite)) return { draft, changes: [] };
+  const wanted = [...new Set(requestedDirectionalPlazas(request).map(m => m[1]))];
+  if (!wanted.length) return { draft, changes: [] };
+  const [gx, , gz] = ground.pos, [gw, , gd] = ground.size, next = structuredClone(design), changes = [];
+  next.pads ??= []; next.paths ??= [];
+  const onSide = (dir, x, z) => dir === '北' ? z < gz : dir === '南' ? z > gz : dir === '東' ? x > gx : x < gx;
+  const outward = (dir, x, z) => dir === '北' ? gz - z : dir === '南' ? z - gz : dir === '東' ? x - gx : gx - x;
+  const nearRiver = (x, z, w, d) => (next.rivers || []).some(river => (river?.points || []).slice(1).some((b, k) => {
+    const a = river.points[k], dx = b.x - a.x, dz = b.z - a.z, len2 = dx * dx + dz * dz || 1;
+    return [[0, 0], [-1, -1], [1, -1], [-1, 1], [1, 1], [0, -1], [0, 1], [-1, 0], [1, 0]].some(([sx, sz]) => {
+      const px = x + sx * w / 2, pz = z + sz * d / 2, t = Math.max(0, Math.min(1, ((px - a.x) * dx + (pz - a.z) * dz) / len2));
+      return Math.hypot(px - a.x - t * dx, pz - a.z - t * dz) < (river.width || 0) / 2 + 1;
+    });
+  }));
+  for (const dir of wanted) {
+    if (next.pads.some(p => [p.x, p.z, p.width, p.depth].every(Number.isFinite) && p.width >= 4 && p.depth >= 4 && p.purpose !== 'building' && onSide(dir, p.x, p.z))) continue;
+    const spawn = draft.objects.filter(o => o?.role === 'spawn' && Array.isArray(o.pos) && o.pos.every(Number.isFinite) && onSide(dir, o.pos[0], o.pos[2])).sort((u, v) => outward(dir, v.pos[0], v.pos[2]) - outward(dir, u.pos[0], u.pos[2]))[0];
+    const ends = next.paths.flatMap(path => Array.isArray(path?.points) && path.points.length >= 2 ? [path.points[0], path.points.at(-1)] : []).filter(q => [q?.x, q?.z, q?.height].every(Number.isFinite) && onSide(dir, q.x, q.z)).sort((u, v) => outward(dir, v.x, v.z) - outward(dir, u.x, u.z));
+    const anchor = spawn ? { x: spawn.pos[0], z: spawn.pos[2], source: `入口${spawn.id}` } : ends[0] ? { x: ends[0].x, z: ends[0].z, source: '道の端' } : null;
+    if (!anchor) continue;
+    const road = ends.map(q => ({ q, d: Math.hypot(q.x - anchor.x, q.z - anchor.z) })).sort((u, v) => u.d - v.d)[0];
+    const height = +(road && road.d <= 8 ? road.q.height : sampleTerrainRelief(next, anchor.x, anchor.z)).toFixed(2);
+    let placed = null;
+    for (const [w, d] of [[14, 10], [12, 9], [10, 8], [8, 6], [6, 5]]) {
+      const x = Math.max(gx - gw / 2 + w / 2 + 0.5, Math.min(gx + gw / 2 - w / 2 - 0.5, anchor.x)), z = Math.max(gz - gd / 2 + d / 2 + 0.5, Math.min(gz + gd / 2 - d / 2 - 0.5, anchor.z));
+      const clash = next.pads.some(p => [p.x, p.z, p.width, p.depth, p.height].every(Number.isFinite) && Math.abs(p.height - height) > 0.35 && Math.abs(x - p.x) < (w + p.width) / 2 + 1.7 && Math.abs(z - p.z) < (d + p.depth) / 2 + 1.7);
+      if (!clash && !nearRiver(x, z, w, d) && onSide(dir, x, z)) { placed = { x: +x.toFixed(2), z: +z.toFixed(2), width: w, depth: d, height }; break; }
+    }
+    if (!placed) continue;
+    next.pads.push(placed);
+    changes.push({ kind: 'requestedPlazaAdded', direction: dir, pad: placed, reason: `指示の「${dir}側の広場」にあたる平場が設計になかったため、${anchor.source}の位置(${placed.x}, ${placed.z})に${placed.width}x${placed.depth}m・高さ${height}mの平らな広場を敷いた` });
   }
   return changes.length ? { draft: { ...draft, terrainDesign: next }, changes } : { draft, changes: [] };
 }

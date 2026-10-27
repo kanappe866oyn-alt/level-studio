@@ -167,7 +167,7 @@ export function expandDesignFeatures(draft) {
       const laterals = ordered.map(p => p[lateralKey]), centreLateral = (Math.min(...laterals) + Math.max(...laterals)) / 2, deviation = Math.max(...laterals.map(v => Math.abs(v - centreLateral)));
       const boxWidth = +Math.max(width * 1.2, 2 * deviation + width + 0.5).toFixed(2), sign = axis === 'z' ? 1 : -1;
       const sections = ordered.map((p, i) => [i === 0 ? -0.5 : i === ordered.length - 1 ? 0.5 : +((p[axis] - midAlong) / length).toFixed(4), +(sign * (p[lateralKey] - centreLateral) / boxWidth).toFixed(4)]);
-      objects.push({ id: fresh(`river_${index + 1}`), name: '川', role: 'water', type: 'box', variant: 1, material: 0, color: '#1f6fa8',
+      objects.push({ id: fresh(`river_${index + 1}`), name: '川', role: 'water', type: 'box', variant: 1, material: 0, color: '#1f6fa8', designFeature: 'river',
         pos: axis === 'z' ? [+centreLateral.toFixed(2), +(level - 0.15).toFixed(2), +midAlong.toFixed(2)] : [+midAlong.toFixed(2), +(level - 0.15).toFixed(2), +centreLateral.toFixed(2)],
         size: [boxWidth, 0.3, +length.toFixed(2)], rot: [0, axis === 'z' ? 0 : +(Math.PI / 2).toFixed(4), 0], riverProfile: { widthRatio: +(width / boxWidth).toFixed(4), sections } });
     } else for (let i = 1; i < pts.length; i++) {
@@ -176,7 +176,7 @@ export function expandDesignFeatures(draft) {
       const lengthWithJoints = length + (i > 1 ? width / 2 : 0) + (i < pts.length - 1 ? width / 2 : 0);
       const mid = [(a.x + b.x) / 2, (a.z + b.z) / 2], shift = ((i > 1 ? 1 : 0) - (i < pts.length - 1 ? 1 : 0)) * width / 4;
       const unit = [(b.x - a.x) / length, (b.z - a.z) / length];
-      objects.push({ id: fresh(`river_${index + 1}_${i}`), name: '川', role: 'water', type: 'box', variant: 1, material: 0, color: '#1f6fa8',
+      objects.push({ id: fresh(`river_${index + 1}_${i}`), name: '川', role: 'water', type: 'box', variant: 1, material: 0, color: '#1f6fa8', designFeature: 'river',
         pos: [+(mid[0] + unit[0] * shift).toFixed(2), +(level - 0.15).toFixed(2), +(mid[1] + unit[1] * shift).toFixed(2)], size: [width, 0.3, +lengthWithJoints.toFixed(2)], rot: [0, +Math.atan2(unit[0], unit[1]).toFixed(4), 0] });
     }
     changes.push({ kind: 'riverBuilt', index, reason: `川${index + 1}を幅${width}m・${pts.length - 1}区間の水路として作り、水面(${level.toFixed(1)}m)の下まで河床を掘る`, level: +level.toFixed(2) });
@@ -221,6 +221,16 @@ export function expandDesignFeatures(draft) {
 
   next.featuresExpanded = true;
   return { draft: { ...draft, objects, terrainDesign: next, designFeatureUnbuilt: [...(draft.designFeatureUnbuilt || []), ...unbuilt] }, changes, unbuilt };
+}
+
+// The design as the model wrote it: without the floors, stairs, water and rock built from its rivers, terraces and
+// formations, and without the levels and roads a terrace laid out. Expanding the result again rebuilds the same features.
+export function withoutExpandedFeatures(draft) {
+  const design = draft?.terrainDesign;
+  if (design?.featuresExpanded !== true || !Array.isArray(draft.objects)) return draft;
+  const { featuresExpanded: _expanded, ...own } = design;
+  return { ...draft, objects: draft.objects.filter(o => !o?.designFeature),
+    terrainDesign: { ...own, ...(Array.isArray(own.pads) ? { pads: own.pads.filter(p => p?.from !== 'terrace') } : {}), ...(Array.isArray(own.paths) ? { paths: own.paths.filter(p => p?.from !== 'terrace') } : {}) } };
 }
 
 // Rock standing on the compiled ground: each sits on the lowest ground under it and sinks a little into it.

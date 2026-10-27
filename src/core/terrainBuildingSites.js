@@ -1,4 +1,4 @@
-import { surfaceTop } from './spatialGeometry.js';
+import { surfaceTop, footprintContains } from './spatialGeometry.js';
 import { sampleTerrainRelief } from './terrainRelief.js';
 import { getModelDefault, usesNativeSizing } from './modelCatalog.js';
 import ASSETS from '../assets.json' with { type: 'json' };
@@ -50,7 +50,25 @@ export function reserveTerrainBuildings(design, objects, ground) {
       return enter<=leave;
     }));
     let shifted = null;
-    if (blocked(x, z)) {
+    // The terrain holds each flat 0.8 m beyond its edge, so two flats of different heights closer than 1.6 m meet.
+    // A plot at height h meets only flats of that same height.
+    const flatPads = (px, pz, h) => design.pads.filter(p => Math.abs(px-p.x)<p.width/2+width/2+1.6 && Math.abs(pz-p.z)<p.depth/2+depth/2+1.6).every(p => Math.abs(p.height-h)<=.01);
+    // A plot that spans flat ground of two heights (a building across two terrace levels, or half on a raised
+    // plaza) would give one spot two heights; it is slid the same way as a plot on a road.
+    const straddles = !flatPads(x, z, height);
+    // Points over the plot, 2 m apart or closer: a stair, a bridge, water or a terrace level is never built over.
+    const plotPoints = (px, pz) => { const nx = Math.ceil(width / 2), nz = Math.ceil(depth / 2), points = [];
+      for (let i = 0; i <= nx; i++) for (let k = 0; k <= nz; k++) points.push([px - width/2 + width*i/nx, pz - depth/2 + depth*k/nz]);
+      return points; };
+    const ways = objects.filter(o => o !== object && (['climb', 'bridge', 'water', 'corridor'].includes(o.role) || o.designFeature === 'terraceFloor') && o.pos?.every(Number.isFinite) && o.size?.every(Number.isFinite));
+    const onWay = (px, pz) => ways.some(o => plotPoints(px, pz).some(([qx, qz]) => footprintContains(o, qx, qz, -0.3)));
+    // A plot keeps clear of the water and banks of a river (the channel is cut below the plot's height).
+    const inRiver = (px, pz) => (design.rivers || []).some(river => (river?.points || []).slice(1).some((b, k) => {
+      const a = river.points[k], dx = b.x-a.x, dz = b.z-a.z;
+      return plotPoints(px, pz).some(([qx, qz]) => { const t = Math.max(0, Math.min(1, ((qx-a.x)*dx+(qz-a.z)*dz)/(dx*dx+dz*dz || 1))); return Math.hypot(qx-a.x-t*dx, qz-a.z-t*dz) < (river.width || 0)/2 + 1; });
+    }));
+    const inTheWay = onWay(x, z) || inRiver(x, z);
+    if (blocked(x, z) || straddles || inTheWay) {
       // Slide the model sideways by the smallest step that clears every road,
       // stays on the ground and avoids buildings already reserved. A larger
       // problem is left to the model to redesign.
@@ -75,15 +93,14 @@ export function reserveTerrainBuildings(design, objects, ground) {
         }
         return false;
       }));
-      const flatPads = (px, pz) => { const cover = design.pads.filter(p => Math.abs(px-p.x)<=p.width/2+width/2 && Math.abs(pz-p.z)<=p.depth/2+depth/2); return cover.every(p => Math.abs(p.height-cover[0].height)<=.01); };
-      const fits = (px, pz) => Math.abs(px-ground.pos[0])+width/2<=ground.size[0]/2 && Math.abs(pz-ground.pos[2])+depth/2<=ground.size[2]/2 && !blocked(px, pz) && flatPads(px, pz) &&
+      const fits = (px, pz) => Math.abs(px-ground.pos[0])+width/2<=ground.size[0]/2 && Math.abs(pz-ground.pos[2])+depth/2<=ground.size[2]/2 && !blocked(px, pz) && flatPads(px, pz, plot(px, pz).height) && !inRiver(px, pz) && !onWay(px, pz) &&
         !plotClashesRoad(px, pz, plot(px, pz).height) &&
         !reservations.some(r => Math.abs(px-r.x)<(width+r.width)/2 && Math.abs(pz-r.z)<(depth+r.depth)/2);
-      outer: for (let step=1; step<=10; step++) for (const [dx,dz] of [[1,0],[-1,0],[0,1],[0,-1],[.7,.7],[-.7,.7],[.7,-.7],[-.7,-.7]]) {
+      outer: for (let step=1; step<=14; step++) for (const [dx,dz] of [[1,0],[-1,0],[0,1],[0,-1],[.7,.7],[-.7,.7],[.7,-.7],[-.7,-.7]]) {
         const px=x+dx*step, pz=z+dz*step;
         if (fits(px, pz)) { shifted={from:[x,z],to:[px,pz],distance:Math.hypot(px-x,pz-z)}; break outer; }
       }
-      if (!shifted) throw new Error(`${object.id}: 実寸モデルが指定の道を塞ぎます。道の位置と幅を保ち、建物を移してください。`);
+      if (!shifted) throw new Error(inTheWay && !blocked(x, z) ? `${object.id}: 実寸モデルの敷地(${width.toFixed(1)}x${depth.toFixed(1)}m)が階段・橋・水路・段丘の床に重なり、近くに置ける場所もありません。建物をそれらの外へ移してください。` : straddles && !blocked(x, z) ? `${object.id}: 実寸モデルの敷地(${width.toFixed(1)}x${depth.toFixed(1)}m)が高さの違う平場・段にまたがり、近くに平らな置き場所もありません。建物を1つの平場の中か、平場の外へ移してください。` : `${object.id}: 実寸モデルが指定の道を塞ぎます。道の位置と幅を保ち、建物を移してください。`);
       x=shifted.to[0]; z=shifted.to[1]; object.pos[0]=x; object.pos[2]=z;
       ({ cover: covering, height } = plot(x, z));
     }

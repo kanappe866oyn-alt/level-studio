@@ -183,6 +183,12 @@ export function assembleGeneration(raw, normalized, brief, { allowFloating = fal
         Number.isFinite(surfaceTop(byId.get('__generated_terrain'), o.pos[0], o.pos[2]))) s = { ...s, supportId: '__generated_terrain' };
     // A start/goal marker a little off the compiled terrain surface is the
     // commonest height slip; seat it on the surface instead of failing the run.
+    // A bridge over water on the generated terrain crosses the river between its banks. The banks' height is
+    // only known once the terrain is built, so a deck height the model guessed (no support named, or a surfaceY
+    // the request never asked for) is replaced by the banks' height; left at the guess the deck is a step up from both banks.
+    if (!allowFloating && (!s?.supportId || s.supportId === '__generated_terrain') && o.role === 'bridge' && o.type === 'box' && isUpright(o) && !o.customModelUrl && byId.has('__generated_terrain') &&
+        (s?.surfaceY === undefined || !brief.requirements.some(r => r.role === 'bridge' && ['elevation', 'height', 'clearance'].includes(r.kind))) &&
+        objects.some(w => w.role === 'water' && w.type === 'box' && footprintContains(w, o.pos[0], o.pos[2]))) s = { ...s, supportId: '__generated_terrain', surfaceY: undefined };
     if (!s?.supportId && ['spawn', 'goal', 'checkpoint', 'exit'].includes(o.role) && byId.has('__generated_terrain')) {
       const top = surfaceTop(byId.get('__generated_terrain'), o.pos[0], o.pos[2]);
       if (Number.isFinite(top) && Math.abs(o.pos[1] - o.size[1] / 2 - top) <= 1.5) s = { ...s, supportId: '__generated_terrain', markerSeat: true };
@@ -191,7 +197,7 @@ export function assembleGeneration(raw, normalized, brief, { allowFloating = fal
     const support = byId.get(s.supportId);
     const height = support && support !== o && isWalkable(support) && support.role !== 'climb' ? surfaceTop(support, o.pos[0], o.pos[2]) : null;
     // A bridge crosses a gap: its deck is level with the banks it joins, not seated on the bed under its middle.
-    let deck = height;
+    let deck = height, size = o.size;
     if (o.role === 'bridge' && support?.role === 'landform' && support.terrainProfile && isUpright(o) && !o.customModelUrl && Number.isFinite(height) && s.surfaceY === undefined) {
       const along = o.size[0] >= o.size[2] ? [1, 0] : [0, 1], half = Math.max(o.size[0], o.size[2]) / 2 - 0.3;
       const ends = [-1, 1].map(sign => { const [x, z] = worldXZ(o, along[0] * sign * half, along[1] * sign * half); return surfaceTop(support, x, z); });
@@ -199,9 +205,13 @@ export function assembleGeneration(raw, normalized, brief, { allowFloating = fal
       // The deck clears the water under it: a floor level with the surface counts as standing in the water.
       const over = objects.filter(w => w.role === 'water' && w.type === 'box' && footprintContains(w, o.pos[0], o.pos[2]));
       if (over.length) deck = Math.max(deck, Math.max(...over.map(w => w.pos[1] + w.size[1] / 2)) + 0.25);
+      // Raised above a bank by less than a step, a thin deck leaves a gap under its end that is walked into as a
+      // ledge, not stepped onto: the deck is made deep enough to rest on that bank (its top and span unchanged).
+      const lift = ends.every(Number.isFinite) && deck !== height ? deck - Math.min(...ends) : 0;
+      if (lift > o.size[1] + 0.05 && lift <= 0.6) size = [o.size[0], +lift.toFixed(3), o.size[2]];
     }
     if (!Number.isFinite(height)) issues.push(`${o.id}: supportId=${s.supportId}の支持床が配置位置にありません。`);
-    else if (ASSETS.SEMANTIC_PREFABS[o.role]?.groundSnap || s.markerSeat || isWalkable(o) && s.surfaceY === undefined && !s.stairTo) set(o, [o.pos[0], deck !== height ? deck - o.size[1] / 2 : height + o.size[1] / 2, o.pos[2]], o.size, o.rot, deck !== height ? `${support.id}の両岸の高さに橋の床面を合わせた（中央の川底には置かない）` : `${support.id}の上面に実寸モデルを接地`);
+    else if (ASSETS.SEMANTIC_PREFABS[o.role]?.groundSnap || s.markerSeat || isWalkable(o) && s.surfaceY === undefined && !s.stairTo) set(o, [o.pos[0], deck !== height ? deck - size[1] / 2 : height + o.size[1] / 2, o.pos[2]], size, o.rot, deck !== height ? `${support.id}の両岸の高さに橋の床面を合わせた（中央の川底には置かない${size !== o.size ? '。岸との間に隙間が残らないよう橋床を岸まで厚くした' : ''}）` : `${support.id}の上面に実寸モデルを接地`);
   }
   // Open only the narrow strip a declared stair crosses. Never cut a counted
   // wall, an uploaded model, a rotated/non-box wall or most of a wall's length.

@@ -1666,9 +1666,9 @@ ${serializeSceneForAI(objects)}
 
         } else if (shouldRetryAIError(error) && attempt < maxAttempts) {
 
-          reportGenerationStep('Google側が一時的に利用できません（503）。完了済みの読み取りを保持し、3秒後に一度だけ再試行します。');
+          reportGenerationStep('Google側が一時的に利用できません（503）。完了済みの段階を保持し、10秒後に未完了の段階だけを一度再試行します。');
 
-          try { await abortableDelay(3000, signal); }
+          try { await abortableDelay(10000, signal); }
           catch { setGenerationStatus(interruptedGenerationStatus()); break; }
 
         } else {
