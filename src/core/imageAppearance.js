@@ -26,10 +26,28 @@ function colourFor(observation, words) {
   return null;
 }
 
+// A reading of the whole scene ("全体的に緑の地面と灰色の階段や岩で構成") names the colour its built parts share. The first
+// colour that belongs to something other than ground, plants, water or sky is that colour; it is used for decks, corridors and
+// walls the reading never names, which would otherwise keep the catalogue colour (a brown deck in a grey stone scene).
+const OVERALL = /全体|全般|全景|ステージ全体/;
+const NOT_BUILT = /^(?:の|い|色|な)*(?:地面|草|芝|木|樹|森|葉|植|花|水|川|池|空|雲)/;
+const COLOUR_WORDS = new RegExp(COLOURS.map(([pattern]) => pattern.source).join('|'), 'g');
+function overallColour(observations) {
+  for (const text of observations.filter(t => OVERALL.test(t))) {
+    for (const match of text.matchAll(COLOUR_WORDS)) {
+      if (NOT_BUILT.test(text.slice(match.index + match[0].length))) continue;
+      const hex = COLOURS.find(([pattern]) => pattern.test(match[0]))?.[1];
+      if (hex) return { text, hex };
+    }
+  }
+  return null;
+}
+const OVERALL_ROLES = ['platform', 'corridor', 'wall'];
+
 export function colourFromImageReading(objects, brief) {
   const observations = (brief?.imageObservations || []).filter(o => typeof o === 'string');
   if (!observations.length) return { objects, changes: [] };
-  const changes = [];
+  const changes = [], overall = overallColour(observations);
   const next = objects.map(o => {
     let out = o;
     for (const kind of KINDS.filter(k => k.roles.includes(o.role))) {
@@ -41,6 +59,11 @@ export function colourFromImageReading(objects, brief) {
       const hex = colourFor(source, kind.words);
       changes.push({ id: o.id, reason: `参考画像の読み取り「${source}」にある色・素材を、既定色のままだった${o.id}の${field === 'color2' ? '屋根色' : '色'}に使った(${hex})` });
       out = { ...out, [field]: hex };
+    }
+    const fallback = ASSETS.SEMANTIC_PREFABS[o.role]?.color;
+    if (out === o && overall && OVERALL_ROLES.includes(o.role) && (!o.color || o.color.toLowerCase() === fallback?.toLowerCase())) {
+      changes.push({ id: o.id, reason: `参考画像の読み取りで${o.id}にあたる構造の色は書かれていなかったため、全体の読み取り「${overall.text}」にある構造物の色を、既定色のままだった${o.id}に使った(${overall.hex})` });
+      out = { ...o, color: overall.hex };
     }
     return out;
   });
