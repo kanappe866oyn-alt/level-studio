@@ -10,6 +10,17 @@ export const BUILDING_MATERIAL_SLOTS = {
 
 export const supportsBuildingColors = object => object?.role === 'building' && !object.customModelUrl && [1, 2, 3].includes(object.variant || 1);
 
+// Flat-roof kits share trim materials with their walls. Tint the cloned roof
+// mesh, rather than its shared material name, so the roof colour stays distinct.
+export function finishBuildingRoofMaterial(material, meshName, object, roofColor) {
+  if (!supportsBuildingColors(object) || !roofColor) return false;
+  const name = meshName.replaceAll('_', ' ').replace(/\.\d+$/, '').trim();
+  const roofs = { 1: ['Roof slab', 'Roof parapet'], 2: ['Pitched roof', 'Roof ridge'], 3: ['Base roof', 'Control room roof'] };
+  if (!roofs[object.variant || 1].includes(name)) return false;
+  material.color.set(roofColor);
+  return true;
+}
+
 export function finishBuildingMaterial(material, colors) {
   const slot = BUILDING_MATERIAL_SLOTS[material.name];
   if (slot === undefined) return false;

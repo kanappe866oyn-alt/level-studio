@@ -58,7 +58,7 @@ export default function SidebarRight({
                         {selectedObj.color && <button className="btn b-red" onClick={() => handleStringChangeDirect('color', null)}>戻す</button>}
                       </div>
                     )}
-                    {colorCount >= 2 && (!buildingColors || selectedObj.variant === 2) && (
+                    {colorCount >= 2 && (
                       <div className="crow">
                         <span className="clabel">{buildingColors ? '屋根' : '2: Sub 1'}</span>
                         <input type="color" value={selectedObj.color2 || "#ffffff"} onChange={(e) => handleStringChangeDirect('color2', e.target.value)} />

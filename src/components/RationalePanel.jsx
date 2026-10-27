@@ -14,12 +14,14 @@ export default function RationalePanel({ designRationale, spatialRecheck, spatia
   const referenceSections = [
     ['imageObservations', '参考画像からAIが読み取った特徴'],
     ['instructions', '指定条件の確認'],
-    ['preferences', '好みと設計値'],
+    ['preferences', '空間と画像の特徴の照合'],
     ['unsupported', '今回再現できない要素'],
   ];
 
   return (
     <div className="rationale">
+      {alignment?.unsupported?.length > 0 && <p role="status">未対応の条件があります: {alignment.unsupported.join(' / ')}。この条件は達成していません。</p>}
+      {designRationale?.generation_navigation && <p>生成時の歩行検査: {designRationale.generation_navigation.status === 'checked' ? `${designRationale.generation_navigation.surfaces}箇所の主要床で往復接続を確認` : '未確認'}。モデル内部は箱による近似です。編集後は再確認してください。</p>}
       {onSpatialRecheck && <SpatialReviewPanel report={spatialRecheck} stale={spatialRecheckStale} onCheck={onSpatialRecheck} onCancel={onCancelSpatialCheck} onRepairJoins={onTerrainJoinRepair} checking={spatialChecking} disabled={spatialCheckDisabled} onView={onSpatialProblem} coverProposal={coverProposal} routeDisplay={routeDisplay} />}
       <div className="r-header" onClick={() => setIsExpanded(!isExpanded)}>
         <strong className="r-title">📝 空間の設計理由</strong>

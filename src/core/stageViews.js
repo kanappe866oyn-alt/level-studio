@@ -1,4 +1,4 @@
-import { getBounds, createSpatialWorld, WALKING } from './spatialGeometry.js';
+import { getBounds, createSpatialWorld, WALKING, worldXZ } from './spatialGeometry.js';
 import { PLAYER_EYE_HEIGHT } from './worldScale.js';
 import { segmentHitsBox, spatialEyeSamples } from './spatialSightlines.js';
 import { isRockMountain } from './terrainRockMountains.js';
@@ -97,6 +97,41 @@ export function walkingViews(objects) {
     const target = next ? [next.pos[0], next.pos[1] + PLAYER_EYE_HEIGHT, next.pos[2]] : [feet[0], position[1], feet[2] - 5];
     return { kind, label: ['入口', '休憩地点', '高台'][i], position, feet, target };
   }).filter(Boolean);
+}
+
+
+// A generated stage has no start, checkpoint or goal markers to look from. Its walking viewpoints come from what it was built
+// around: the foot of a stair (entry), the middle of a bridge (rest) and the top of a stair (vista), each facing the next thing to
+// walk to. Each stands on a floor the player can reach (a foot that cannot stand on the floor, or stands in water, gives no view).
+export function derivedWalkingViews(objects) {
+  const world = createSpatialWorld(objects);
+  const stand = (x, z, reference) => {
+    const y = world.floor(x, z, reference);
+    return Number.isFinite(y) && Math.abs(y - reference) <= WALKING.stepHeight + 0.2 && !world.dangerous(x, z, y) ? y : null;
+  };
+  const view = (kind, label, x, z, reference, lookAt) => {
+    const y = stand(x, z, reference);
+    return y === null ? null : { kind, label, position: [x, y + PLAYER_EYE_HEIGHT, z], feet: [x, y, z], target: [lookAt[0], y + PLAYER_EYE_HEIGHT, lookAt[1]] };
+  };
+  const stairs = objects.filter(o => o.role === 'climb' && o.variant !== 2), bridges = objects.filter(o => o.role === 'bridge');
+  const out = [];
+  const stair = stairs[0];
+  if (stair) {
+    const half = stair.size[2] / 2, bottom = stair.pos[1] - stair.size[1] / 2, top = stair.pos[1] + stair.size[1] / 2;
+    const ends = [-1, 1].map(sign => ({ sign, at: worldXZ(stair, 0, sign * (half + 3)) }));
+    const low = ends.find(e => stand(e.at[0], e.at[1], bottom) !== null) || ends[0], high = ends.find(e => e !== low);
+    out.push(view('entry', '入口', low.at[0], low.at[1], bottom, [stair.pos[0], stair.pos[2]]));
+    // the top of the stair, facing on along it (away from the stair)
+    const beyond = worldXZ(stair, 0, high.sign * (half + 9));
+    out.push(view('vista', '高台', ...worldXZ(stair, 0, high.sign * (half + 3)), top, beyond));
+  }
+  const bridge = bridges[0];
+  if (bridge) {
+    const alongX = bridge.size[0] >= bridge.size[2], half = Math.max(bridge.size[0], bridge.size[2]) / 2, deck = bridge.pos[1] + bridge.size[1] / 2;
+    const start = worldXZ(bridge, alongX ? -(half - 1) : 0, alongX ? 0 : -(half - 1)), far = worldXZ(bridge, alongX ? half + 4 : 0, alongX ? 0 : half + 4);
+    out.push(view('rest', '休憩地点', start[0], start[1], deck, far));
+  }
+  return out.filter(Boolean);
 }
 
 export function matchingPlayDirection(views, feet) {

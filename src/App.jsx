@@ -1,9 +1,10 @@
+import { TERRAIN_DESIGN_SCHEMA, TERRAIN_DESIGN_PROMPT } from './core/terrainDesign.js';
 import { createPairedStageDesigner } from './core/pairedStageDesign.js';
 import { applyLocalPalette } from './core/localAppearance.js';
 import { createGenerationRequestCache } from './core/generationRequestCache.js';
 import { generationThinking } from './core/generationThinking.js';
-import { generationValidationError, readGenerationJSON } from './core/generationErrors.js';
-import { GENERATION_BRIEF_SCHEMA, generateFaithfulStage } from './core/generationFidelity';
+import { GENERATION_BRIEF_SCHEMA, GENERATION_REVIEW_SCHEMA, generateFaithfulStage } from './core/generationFidelity';
+import { generationValidationError, readGenerationJSON } from './core/generationErrors';
 // src/App.jsx
 
 import React, { useState, useRef, useMemo, useCallback } from 'react';
@@ -12,10 +13,11 @@ import { Canvas } from '@react-three/fiber';
 
 import { OrbitControls, Grid, TransformControls, useProgress } from '@react-three/drei';
 import StageLighting from './components/StageLighting';
+import SceneSky from './components/SceneSky';
 import { RENDER_QUALITY } from './core/renderQuality';
 import { RenderPerformanceSampler, RenderPerformanceReadout } from './components/RenderPerformance';
 import StageViewController from './components/StageViewController';
-import { walkingViews, spatialWalkingViews, matchingPlayDirection } from './core/stageViews';
+import { walkingViews, derivedWalkingViews, spatialWalkingViews, matchingPlayDirection } from './core/stageViews';
 import { hasNatureAppearance } from './core/natureAppearance';
 
 import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
@@ -48,7 +50,7 @@ import NatureBuilder from './components/NatureBuilder';
 import TerrainBuilder from './components/TerrainBuilder.jsx';
 import { appendEditHistory } from './core/editHistory.js';
 import { createNatureWorkspace } from './core/natureWorkspace';
-import { readSessionKey, explainAIError, shouldRetryAIError } from './core/aiSettings';
+import { readSessionKey, explainAIError, shouldRetryAIError, pickFallbackModel } from './core/aiSettings';
 import { createAIRequestBudget } from './core/aiRequestBudget';
 
 import TopToolbar from './components/TopToolbar';
@@ -150,6 +152,10 @@ const getModeSchemas = (mode) => {
       widthRatio: { type: SchemaType.NUMBER }, sections: { type: SchemaType.ARRAY, items: { type: SchemaType.ARRAY, items: { type: SchemaType.NUMBER } } },
     }, required: ['widthRatio', 'sections'] },
     variant: { type: SchemaType.INTEGER },
+    surfaceY: { type: SchemaType.NUMBER, description: '新規生成の水平床上面の標高。中心Yではない' },
+    supportId: { type: SchemaType.STRING, description: '接地する物の支持床ID。新規生成で実寸から中心Yを計算' },
+    stairFrom: { type: SchemaType.STRING, description: '新規生成の階段下端の床ID' },
+    stairTo: { type: SchemaType.STRING, description: '新規生成の階段上端の床ID。階段のX/Z側の辺へ接続' },
 
     material: { type: SchemaType.INTEGER },
 
@@ -207,9 +213,9 @@ const getModeSchemas = (mode) => {
 
     type: SchemaType.OBJECT,
 
-    properties: { design_rationale: rationaleSchema, objects: { type: SchemaType.ARRAY, items: { type: SchemaType.OBJECT, properties: baseObjectProps, required: ["id", "name", "type", "role", "pos", "size", "rot"] } } },
+    properties: { terrainDesign: TERRAIN_DESIGN_SCHEMA, design_rationale: rationaleSchema, objects: { type: SchemaType.ARRAY, items: { type: SchemaType.OBJECT, properties: baseObjectProps, required: ["id", "name", "type", "role", "pos", "size", "rot"] } } },
 
-    required: ["design_rationale", "objects"]
+    required: ["design_rationale", "objects", "terrainDesign"]
 
   };
 
@@ -1291,9 +1297,28 @@ ${serializeSceneForAI(objects)}
     generationControllerRef.current = controller;
     const { signal } = controller;
     const spatialRequestBudget = createAIRequestBudget(3);
+    // Every request really sent to the model in this action: capped, and shown at the end so the
+    // daily free allowance can be followed. A request served from the cache is not counted.
+    const aiBudget = createAIRequestBudget(8);
+    // What each request was for and whether it worked, so extra requests can be traced afterwards.
+    const aiLog = [];
+    const callAI = options => aiBudget.run(async () => {
+      try {
+        const result = await requestNatureJSON(options);
+        aiLog.push({ step: options.label || options.step, model: activeModel, ok: true });
+        // Development builds only, in memory only: lets a failing generation be inspected afterwards.
+        if (import.meta.env.DEV) (window.__aiDebug ||= []).push({ step: options.label || options.step, result });
+        return result;
+      } catch (error) {
+        aiLog.push({ step: options.label || options.step, model: activeModel, ok: false, error: error?.code || error?.status || error?.name || 'error' });
+        throw error;
+      }
+    }, options.signal);
     const timeout = setTimeout(() => controller.abort(new DOMException('生成が時間切れになりました。', 'TimeoutError')), GENERATION_TIMEOUT_MS);
     let activeGenerationStep = '生成中です。最大5分で中断します。';
-    const reportGenerationStep = status => { activeGenerationStep = status; setGenerationStatus(status); };
+    // A model switch notice stays in front of every later step message.
+    let modelNotice = '';
+    const reportGenerationStep = status => { activeGenerationStep = status; setGenerationStatus(modelNotice ? `${modelNotice} ${status}` : status); };
     const interruptedGenerationStatus = () => signal.reason?.name === 'TimeoutError'
       ? `時間切れになりました。停止した段階：${activeGenerationStep} 再試行できます。`
       : '生成をキャンセルしました。';
@@ -1302,8 +1327,10 @@ ${serializeSceneForAI(objects)}
 
     const startTime = performance.now();
 
-    const requestGenerationJSON = createGenerationRequestCache(requestNatureJSON);
+    const requestGenerationJSON = createGenerationRequestCache(callAI);
     let attempt = 0; const maxAttempts = 2; let success = false;
+    // The model in use can change once, when the provider confirms a per-day quota is spent.
+    let activeModel = cloudModel; const triedModels = new Set([cloudModel]);
 
 
 
@@ -1374,7 +1401,7 @@ ${serializeSceneForAI(objects)}
 
         const activeRoles = MODE_CONFIG[generationMode]?.roles || Object.keys(SEMANTIC_PREFABS);
 
-        const assetKnowledgeText = buildAssetKnowledgeText(activeRoles);
+        const assetKnowledgeText = buildAssetKnowledgeText(activeRoles, { compact: true });
 
         basePrompt += `\n【アセット見た目知識（生成時の配置や色の参考にすること）】\n${assetKnowledgeText}\n`;
 
@@ -1415,22 +1442,22 @@ ${serializeSceneForAI(objects)}
           const genAI = new GoogleGenerativeAI(activeApiKey);
 
           if (useCityPlan || useNaturePlan || useSpatialPlan) {
-            const reader = useNaturePlan ? genAI.getGenerativeModel({ model: cloudModel, generationConfig: { ...generationThinking(cloudModel), maxOutputTokens: 4096, temperature: 0.1, responseMimeType: 'application/json', responseSchema: NATURE_BRIEF_SCHEMA } }) : null;
-            const planner = genAI.getGenerativeModel({ model: cloudModel, generationConfig: { ...generationThinking(cloudModel), maxOutputTokens: useSpatialPlan ? 8192 : 4096, temperature: 0.25, responseMimeType: 'application/json', responseSchema: useSpatialPlan ? SPATIAL_PLAN_SCHEMA : useNaturePlan ? NATURE_PLAN_SCHEMA : CITY_PLAN_SCHEMA } });
+            const reader = useNaturePlan ? genAI.getGenerativeModel({ model: activeModel, generationConfig: { ...generationThinking(activeModel), maxOutputTokens: 4096, temperature: 0.1, responseMimeType: 'application/json', responseSchema: NATURE_BRIEF_SCHEMA } }) : null;
+            const planner = genAI.getGenerativeModel({ model: activeModel, generationConfig: { ...generationThinking(activeModel), maxOutputTokens: useSpatialPlan ? 8192 : 4096, temperature: 0.25, responseMimeType: 'application/json', responseSchema: useSpatialPlan ? SPATIAL_PLAN_SCHEMA : useNaturePlan ? NATURE_PLAN_SCHEMA : CITY_PLAN_SCHEMA } });
             const generateStage = useSpatialPlan ? generatePlannedSpatialStage : useNaturePlan ? generatePlannedNature : generatePlannedCity;
             const planPrompt = useSpatialPlan ? spatialPlanningPrompt : useNaturePlan ? naturePlanningPrompt : cityPlanningPrompt;
             const stage = await generateStage({
               prompt: planPrompt(finalInputText, stageTheme), mode: generationMode, signal,
               userPrompt: finalInputText, theme: stageTheme, hasReferenceImage: !!referenceImagePart,
               requestBrief: reader ? async prompt => {
-                return requestNatureJSON({ model: reader, parts: [prompt, ...(referenceImagePart ? [referenceImagePart] : [])], signal, step: 'reading', onProgress: reportGenerationStep });
+                return callAI({ model: reader, parts: [prompt, ...(referenceImagePart ? [referenceImagePart] : [])], signal, step: 'reading', onProgress: reportGenerationStep });
               } : undefined,
               onStatus: reportGenerationStep,
               validateStage: draft => [...inspectDraft(draft, generationMode, { includeCollisions: false }), ...(useSpatialPlan ? [] : analyzeWalkability(validateObjects(draft)).issues)],
               requestPlan: async prompt => {
                 const parts = [prompt];
                 // Nature planning receives the validated reading in its prompt.
-                if (useNaturePlan) return requestNatureJSON({ model: planner, parts, signal, step: 'planning', onProgress: reportGenerationStep });
+                if (useNaturePlan) return callAI({ model: planner, parts, signal, step: 'planning', onProgress: reportGenerationStep });
                 if (referenceImagePart) parts.push(referenceImagePart);
                 if (useSpatialPlan) return spatialRequestBudget.run(() => requestGenerationJSON({ model: planner, parts, signal, step: 'spatial', onProgress: reportGenerationStep }), signal);
                 const response = await abortable(() => planner.generateContent(parts, { signal }), signal);
@@ -1440,19 +1467,21 @@ ${serializeSceneForAI(objects)}
             resJson = stage;
             currentDraft = stage.objects;
           } else if (!isDiffMode) {
-            const designer = genAI.getGenerativeModel({ model: cloudModel, generationConfig: { ...generationThinking(cloudModel), maxOutputTokens: 32768, temperature: 0.2, responseMimeType: 'application/json', responseSchema: {
+            const designer = genAI.getGenerativeModel({ model: activeModel, generationConfig: { ...generationThinking(activeModel), maxOutputTokens: 32768, temperature: 0.2, responseMimeType: 'application/json', responseSchema: {
               type: 'object', properties: { brief: GENERATION_BRIEF_SCHEMA, stage: fullObjectsSchema }, required: ['brief', 'stage'],
             } } });
-            const builder = genAI.getGenerativeModel({ model: cloudModel, generationConfig: { ...generationThinking(cloudModel), maxOutputTokens: 32768, temperature: 0.2, responseMimeType: 'application/json', responseSchema: fullObjectsSchema } });
-            const pairedDesigner = createPairedStageDesigner({ basePrompt,
-              requestDesign: prompt => requestGenerationJSON({ timeoutMs: 180000, model: designer, parts: [prompt, ...(referenceImagePart ? [referenceImagePart] : [])], signal, step: 'drafting', onProgress: reportGenerationStep }),
-              requestRepair: prompt => requestGenerationJSON({ model: builder, parts: [prompt, ...(referenceImagePart ? [referenceImagePart] : [])], signal, step: 'drafting', onProgress: reportGenerationStep }),
+            const builder = genAI.getGenerativeModel({ model: activeModel, generationConfig: { ...generationThinking(activeModel), maxOutputTokens: 32768, temperature: 0.2, responseMimeType: 'application/json', responseSchema: fullObjectsSchema } });
+            const verifier = genAI.getGenerativeModel({ model: activeModel, generationConfig: { ...generationThinking(activeModel), maxOutputTokens: 6144, temperature: 0.1, responseMimeType: 'application/json', responseSchema: GENERATION_REVIEW_SCHEMA } });
+            const pairedDesigner = createPairedStageDesigner({ basePrompt: basePrompt + TERRAIN_DESIGN_PROMPT,
+              requestDesign: prompt => requestGenerationJSON({ label: '設計', timeoutMs: 180000, model: designer, parts: [prompt, ...(referenceImagePart ? [referenceImagePart] : [])], signal, step: 'drafting', onProgress: reportGenerationStep }),
+              requestRepair: prompt => requestGenerationJSON({ label: '修復', model: builder, parts: [prompt, ...(referenceImagePart ? [referenceImagePart] : [])], signal, step: 'drafting', onProgress: reportGenerationStep }),
             });
             resJson = await generateFaithfulStage({
               request: finalInputText, theme: stageTheme, mode: generationMode, hasImage: !!referenceImagePart,
               signal, basePrompt, onStatus: reportGenerationStep, normalize: validateObjects,
               requestBrief: pairedDesigner.requestBrief,
               requestDraft: pairedDesigner.requestDraft,
+              requestReview: prompt => requestGenerationJSON({ label: 'レビュー', model: verifier, parts: [prompt, ...(referenceImagePart ? [referenceImagePart] : [])], signal, step: 'reviewing', onProgress: reportGenerationStep }),
               validateStage: (draft, raw) => {
                 const issues = inspectDraft(draft, generationMode, { includeCollisions: false, includeNavigation: !raw });
                 if (!raw && !issues.length && draft.some(o => o.role === 'spawn') && draft.some(o => ['goal', 'checkpoint', 'exit', 'objective'].includes(o.role) || (o.role === 'spawn' && draft.filter(q => q.role === 'spawn').length > 1))) {
@@ -1468,7 +1497,7 @@ ${serializeSceneForAI(objects)}
 
           const targetSchema = isDiffMode ? diffSchema : fullObjectsSchema;
 
-          const model = genAI.getGenerativeModel({ model: cloudModel, generationConfig: { ...generationThinking(cloudModel), maxOutputTokens: 32768, temperature: 0.25, responseMimeType: "application/json", responseSchema: targetSchema } });
+          const model = genAI.getGenerativeModel({ model: activeModel, generationConfig: { ...generationThinking(activeModel), maxOutputTokens: 32768, temperature: 0.25, responseMimeType: "application/json", responseSchema: targetSchema } });
 
           const result = await abortable(() => model.generateContent(promptParts, { signal }), signal);
 
@@ -1492,7 +1521,7 @@ ${serializeSceneForAI(objects)}
 
 
 
-            const repairModel = genAI.getGenerativeModel({ model: cloudModel, generationConfig: { ...generationThinking(cloudModel), maxOutputTokens: 32768, temperature: 0.25, responseMimeType: "application/json", responseSchema: fullObjectsSchema } });
+            const repairModel = genAI.getGenerativeModel({ model: activeModel, generationConfig: { ...generationThinking(activeModel), maxOutputTokens: 32768, temperature: 0.25, responseMimeType: "application/json", responseSchema: fullObjectsSchema } });
 
             const repairResult = await abortable(async () => repairModel.generateContent([basePrompt, repairPrompt, ...(imageFile ? [await abortable(() => fileToGenerativePart(imageFile), signal)] : [])], { signal }), signal);
 
@@ -1576,7 +1605,7 @@ ${serializeSceneForAI(objects)}
         const finalRationale = resJson.design_rationale || resJson.designRationale;
 
         const warnings = draftWarnings(currentDraft);
-        if (finalRationale) setDesignRationale({ ...finalRationale, tradeoffs: [...(finalRationale.tradeoffs || []), ...warnings] });
+        if (finalRationale) setDesignRationale({ ...finalRationale, tradeoffs: [...(finalRationale.tradeoffs || []), ...warnings], ...(aiMode === 'gemini' ? { generation_model: { requested: cloudModel, used: activeModel, switched: activeModel !== cloudModel }, generation_calls: { total: aiBudget.used, log: aiLog } } : {}) });
 
 
 
@@ -1607,7 +1636,8 @@ ${serializeSceneForAI(objects)}
         setLogs(prev => ({ ...prev, aiGenerateCount: prev.aiGenerateCount + 1, generationTimes: [...prev.generationTimes, parseFloat(((endTime - startTime) / 1000).toFixed(2))], promptHistory: [...prev.promptHistory, finalInputText] }));
 
         success = true;
-        setGenerationStatus('生成が完了しました。');
+        const callNote = aiMode === 'gemini' && aiBudget.used ? `（AI通信${aiBudget.used}回）` : '';
+        setGenerationStatus((finalRationale?.reference_alignment?.unsupported?.length ? '生成しましたが、未対応の条件があります。「設計理由」で確認してください。' : '生成が完了しました。') + callNote);
 
 
 
@@ -1620,12 +1650,20 @@ ${serializeSceneForAI(objects)}
         attempt++;
 
         console.warn(`AIエラー (${attempt}回目):`, explainAIError(error));
-        console.warn('AI診断', JSON.stringify({ code: /^[A-Z_]{1,40}$/.test(error?.code || '') ? error.code : null, type: error instanceof TypeError ? 'TypeError' : error instanceof SyntaxError ? 'SyntaxError' : 'Error',
-          status: Number(error?.status) || null, step: Object.hasOwn(NATURE_AI_STEPS, error?.natureStep) ? error.natureStep : null }));
+        console.warn('AI診断', JSON.stringify({ type: error instanceof TypeError ? 'TypeError' : error instanceof SyntaxError ? 'SyntaxError' : 'Error',
+          status: Number(error?.status) || null, code: /^[A-Z_]{1,40}$/.test(error?.code || '') ? error.code : null, step: Object.hasOwn(NATURE_AI_STEPS, error?.natureStep) ? error.natureStep : null }));
 
 
 
-        if (shouldRetryAIError(error) && attempt < maxAttempts) {
+        const fallbackModel = aiMode === 'gemini' ? pickFallbackModel(error, activeModel, triedModels) : null;
+        if (fallbackModel) {
+
+          // Same checks, same pipeline; only the model differs. Keep the attempt count.
+          triedModels.add(fallbackModel); activeModel = fallbackModel; attempt = Math.max(0, attempt - 1);
+          modelNotice = `利用上限のため、${fallbackModel}に切り替えて続けています。品質が異なる場合があります。`;
+          reportGenerationStep(activeGenerationStep);
+
+        } else if (shouldRetryAIError(error) && attempt < maxAttempts) {
 
           reportGenerationStep('Google側が一時的に利用できません（503）。完了済みの読み取りを保持し、3秒後に一度だけ再試行します。');
 
@@ -1634,8 +1672,10 @@ ${serializeSceneForAI(objects)}
 
         } else {
           attempt = maxAttempts;
-          setGenerationStatus(`${NATURE_AI_STEPS[error.natureStep] ? `${NATURE_AI_STEPS[error.natureStep]}で停止しました。` : ''}${explainAIError(error)}`);
-          if (error.code !== 'SPATIAL_VALIDATION') alert(explainAIError(error));
+          const exhaustedNote = triedModels.size > 1 && pickFallbackModel(error, activeModel, triedModels) === null && /1日あたり/.test(explainAIError(error)) ? ' 自動で切り替えた他のモデルも上限に達していました。' : '';
+          const failedCalls = aiMode === 'gemini' && aiBudget.used ? ` （この生成でのAI通信${aiBudget.used}回: ${aiLog.map(entry => `${entry.step}${entry.ok ? '' : '×'}`).join('→')}）` : '';
+          setGenerationStatus(`${NATURE_AI_STEPS[error.natureStep] ? `${NATURE_AI_STEPS[error.natureStep]}で停止しました。` : ''}${explainAIError(error)}${exhaustedNote}${failedCalls}`);
+          if (error.code !== 'SPATIAL_VALIDATION') alert(`${explainAIError(error)}${exhaustedNote}`);
 
         }
 
@@ -1661,8 +1701,8 @@ ${serializeSceneForAI(objects)}
   const spatialPlan = designRationale?.spatial_design?.plan;
   const spatialFinished = objects.some(o => !!o.spatialAppearance);
   const terrainFinished = objects.some(o => !!o.terrainProfile?.surfaceMaterial);
-  const hasReviewViews = naturalAppearance || !!spatialPlan;
-  const natureViews = useMemo(() => spatialPlan ? spatialWalkingViews(objects, spatialPlan) : naturalAppearance ? walkingViews(objects) : [], [objects, naturalAppearance, spatialPlan]);
+  const hasReviewViews = naturalAppearance || !!spatialPlan || !!designRationale?.generation_assembly;
+  const natureViews = useMemo(() => spatialPlan ? spatialWalkingViews(objects, spatialPlan) : naturalAppearance ? walkingViews(objects) : designRationale?.generation_assembly ? derivedWalkingViews(objects) : [], [objects, naturalAppearance, spatialPlan, designRationale]);
   const playLookAt = useMemo(() => matchingPlayDirection(natureViews, dummyPos), [natureViews, dummyPos]);
   const natureBridges = useMemo(() => objects.filter(o => o.role === 'bridge'), [objects]);
   const sceneBackground = spatialFinished || terrainFinished ? '#bbcfd5' : naturalAppearance ? '#a7bac4' : '#393939';
@@ -2003,6 +2043,7 @@ ${serializeSceneForAI(objects)}
             <color attach="background" args={[sceneBackground]} />
 
             <fog attach="fog" args={[sceneBackground, viewDistances.fogNear, viewDistances.fogFar]} />
+            {(spatialFinished || terrainFinished) && <SceneSky horizon={sceneBackground} radius={Math.min(viewDistances.camFar * 0.8, 900)} />}
 
 
 
@@ -2157,7 +2198,7 @@ ${serializeSceneForAI(objects)}
                   key={obj.id}
 
                   obj={obj}
-                  natural={naturalAppearance}
+                  natural={naturalAppearance || !!designRationale?.generation_assembly}
                   hoverEnabled={!canvasFocused && !isPlaying}
                   bridges={natureBridges}
 

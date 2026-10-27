@@ -11,7 +11,7 @@ import { planarUVs, terrainSurfaceUVs, terrainSurfaceColors, terrainMasonryColor
 import { NaturePaving } from './NatureMaterials';
 import { useNatureTexture } from '../core/useNatureTexture.js';
 import { finishNatureModelMaterial } from '../core/natureModelFinish.js';
-import { supportsBuildingColors, finishBuildingMaterial } from '../core/buildingAppearance.js';
+import { supportsBuildingColors, finishBuildingMaterial, finishBuildingRoofMaterial } from '../core/buildingAppearance.js';
 import { finishNativeBuildingFacades, disposeNativeBuildingFacades } from '../core/buildingFacadeFinish.js';
 import { clamp, SEMANTIC_PREFABS, getModelPath } from '../core/rules';
 import { SpatialBoxGeometry, SpatialMaterial } from './SpatialMaterials.jsx';
@@ -121,6 +121,7 @@ const CustomModel = ({ id, role, objSize, variant, material, customModelUrl, col
           child.castShadow = true; child.receiveShadow = true;
           finishNatureModelMaterial(child.material, role, color, variant, color2);
         }
+        finishBuildingRoofMaterial(child.material, child.name, { role, variant, customModelUrl }, color2);
       }
     });
     finishNativeBuildingFacades(clone, { role, variant, customModelUrl }, [color, color2, color3], { overridden: !!overrideTexture });

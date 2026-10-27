@@ -4,6 +4,8 @@ export function createAIRequestBudget(limit = 3) {
   if (!Number.isInteger(limit) || limit < 1 || limit > 20) throw new Error('AI通信回数の上限が不正です。');
   let used = 0;
   return {
+    // Requests actually started (a request served from the cache never reaches here).
+    get used() { return used; },
     async run(operation, signal) {
       signal.throwIfAborted();
       if (used >= limit) {

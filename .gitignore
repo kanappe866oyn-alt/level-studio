@@ -39,4 +39,3 @@ sites/
 *.sln
 *.sw?
 .netlify/
-dist-final/

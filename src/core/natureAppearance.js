@@ -230,6 +230,8 @@ export function terrainLandscapeColors(data, object) {
       color = grass.clone().lerp(earth, patches * 0.2).lerp(rock, smooth(0.22, 0.8, slope) * 0.85)
         .lerp(earth, smooth(0.025, 0.15, hollow) * 0.58).lerp(damp, smooth(0.08, 0.22, hollow) * 0.23);
       color.multiplyScalar(0.93 + patches * 0.1);
+      const pathWeight=object.terrainProfile.surfaceGrid?.pathWeights?.[k] || 0;
+      color.lerp(new Color('#b6a080'),pathWeight*.88);
     } else color = rock.clone().multiplyScalar(0.88 + 0.08 * Math.sin(wx * 0.2 + wz * 0.13 + seed) ** 2);
     colors.push(color.r, color.g, color.b);
   }

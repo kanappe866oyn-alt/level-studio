@@ -1,4 +1,4 @@
-import { MODE_CONFIG, SEMANTIC_PREFABS, validateByMode, validateObjects } from './rules';
+import { MODE_CONFIG, SEMANTIC_PREFABS, validateByMode, validateObjects } from './rules.js';
 import { analyzeWalkability } from './walkability.js';
 import { validateTerrainProfile } from './terrainSurface.js';
 import { validateRiverProfile } from './riverSurface.js';

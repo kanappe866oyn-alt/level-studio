@@ -42,6 +42,10 @@ export function validateTerrainProfile(profile) {
     const g = profile.surfaceGrid;
     if (!g || !Number.isInteger(g.columns) || !Number.isInteger(g.rows) || g.columns < 2 || g.rows < 2 || g.columns > 129 || g.rows > 129 || !Array.isArray(g.heights) || g.heights.length !== g.columns * g.rows || !g.heights.every(h => Number.isFinite(h) && h >= 0.01 && h <= 1)) throw new Error('地形の高さ格子は2〜129列・行、厚みの比率0.01〜1で指定してください。');
     surfaceGrid = { columns: g.columns, rows: g.rows, heights: [...g.heights] };
+    if(g.pathWeights!==undefined){
+      if(!Array.isArray(g.pathWeights)||g.pathWeights.length!==g.heights.length||!g.pathWeights.every(v=>Number.isFinite(v)&&v>=0&&v<=1))throw new Error('地形の道の色分けは高さ格子と同じ個数の0〜1の値が必要です。');
+      surfaceGrid.pathWeights=[...g.pathWeights];
+    }
   }
   if (profile.trail !== undefined) {
     const value = profile.trail;

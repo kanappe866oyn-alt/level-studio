@@ -32,6 +32,12 @@ export async function requestNatureJSON({ model, parts, signal, step, onProgress
   try {
     const result = await abortable(() => model.generateContent(parts, { signal: controller.signal }), controller.signal);
     controller.signal.throwIfAborted();
+    // Development builds only, in memory only: how a response ended, even when it is then rejected.
+    if (import.meta.env?.DEV && typeof window !== 'undefined') {
+      let text = '';
+      try { text = result.response.text(); } catch { /* blocked or empty */ }
+      (window.__aiRaw ||= []).push({ step, finish: result.response?.candidates?.[0]?.finishReason, usage: result.response?.usageMetadata, length: text.length, head: text.slice(0, 400), tail: text.slice(-400) });
+    }
     onProgress(`${NATURE_AI_STEPS[step]}の応答を受信しました。内容を検証しています。`);
     controller.signal.throwIfAborted();
     return readGenerationJSON(result.response);

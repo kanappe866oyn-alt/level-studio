@@ -243,7 +243,16 @@ export const checkCollisions = (objects) => {
             return support !== null && top >= support - 1e-6 && top - support <= 0.15 && bottom <= support + 1e-6 && support - bottom <= 0.15;
           }));
         };
-        if (groundedOnTerrain(A.object, B.object) || groundedOnTerrain(B.object, A.object) || supportedPaving(A.object, B.object) || supportedPaving(B.object, A.object)) continue;
+        // A stair, a bridge, a rock wall planted in the ground (its base sunk at most 1.5 m) and a platform resting on the terrain touch it by design: the stair stands against the slope,
+        // the bridge deck ends in the bank, the platform is seated on the ground. Only the terrain they stand on is exempt.
+        const restsOnTerrain = (terrain, thing) => terrain.role === 'landform' && terrain.terrainProfile?.surfaceGrid && !terrain.customModelUrl &&
+          (['climb', 'bridge'].includes(thing.role) || thing.role === 'cliff' && isUpright(thing) && (low => Number.isFinite(low) && thing.pos[1] - thing.size[1] / 2 >= low - 1.5 && thing.pos[1] - thing.size[1] / 2 <= low + 0.12)(Math.min(...[[0, 0], [-1, -1], [1, -1], [-1, 1], [1, 1]].map(([u, v]) => surfaceTop(terrain, thing.pos[0] + u * thing.size[0] * 0.3, thing.pos[2] + v * thing.size[2] * 0.3) ?? Infinity))) || thing.role === 'platform' && thing.size[1] <= 0.6 && isUpright(thing) && [[0, 0], [-1, -1], [1, 1]].every(([u, v]) => {
+            const [x, z] = worldXZ(thing, u * thing.size[0] / 2, v * thing.size[2] / 2), top = surfaceTop(terrain, x, z);
+            // seated on the ground (its underside at the surface), or laid flush with it (its top at the surface)
+            return top !== null && (Math.abs(thing.pos[1] - thing.size[1] / 2 - top) <= 0.12 || Math.abs(thing.pos[1] + thing.size[1] / 2 - top) <= 0.12);
+          }));
+        if (groundedOnTerrain(A.object, B.object) || groundedOnTerrain(B.object, A.object) || supportedPaving(A.object, B.object) || supportedPaving(B.object, A.object) ||
+            restsOnTerrain(A.object, B.object) || restsOnTerrain(B.object, A.object)) continue;
         if (A.parts.some(a => B.parts.some(b => boxesOverlap(a, b)))) {
           collisionCount++;
         }

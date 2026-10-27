@@ -11,6 +11,7 @@ export default function FPSController({ objects, startPos, startLookAt, onLock, 
   const { camera, gl } = useThree();
   const controlsRef = useRef();
   const world = useMemo(() => createSpatialWorld(objects), [objects]);
+  if (import.meta.env.DEV) window.__walkCamera = camera;
   const velocityY = useRef(0);
   const progress = useRef();
   const direction = useRef(new THREE.Vector3());

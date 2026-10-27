@@ -34,6 +34,30 @@ export function shouldRetryAIError(error) {
   return /\b503\b/.test(message) && !/\b429\b/.test(message);
 }
 
+// Google reports which quota was hit and when it recovers, in the message text
+// and/or error details. Free-tier limits are counted per model per day.
+function quotaDetail(error) {
+  const text = `${error?.message || ''} ${JSON.stringify(error?.errorDetails || '')}`;
+  const delay = text.match(/retryDelay\\?"?\s*[:=]\s*\\?"?(\d+(?:\.\d+)?)s/)?.[1] ?? text.match(/retry in (\d+(?:\.\d+)?)s/i)?.[1];
+  return { perDay: /PerDay|per day/i.test(text), seconds: delay === undefined ? null : Math.ceil(Number(delay)) };
+}
+
+// Models measured in eval/ (replayed pass rate, relief quality, time) and callable
+// with the same free key. Never taken from the model list, which also names models
+// that return 404. Quality can differ from the selected model.
+export const FALLBACK_MODELS = ['gemini-3.5-flash-lite'];
+
+// Only a quota the provider itself names as per-day counts. A bare 429 may be a
+// per-minute limit that clears in seconds, and switching models would not help.
+export function isDailyQuotaError(error) {
+  return (Number(error?.status) === 429 || /\b429\b/.test(String(error?.message || ''))) && quotaDetail(error).perDay;
+}
+
+export function pickFallbackModel(error, currentModel, tried = new Set()) {
+  if (!isDailyQuotaError(error)) return null;
+  return FALLBACK_MODELS.find(model => model !== currentModel && !tried.has(model)) ?? null;
+}
+
 export function explainAIError(error) {
   if (error?.code === 'GENERATION_VALIDATION') return `生成案の検査で停止しました。既存のマップは保持しています。\n${String(error.message).slice(0, 1400)}`;
   if (error?.code === 'AI_OUTPUT_LIMIT') return 'AIの応答が出力上限で打ち切られました。入力の長さだけが原因ではありません。生成案は適用していません。';
@@ -49,7 +73,13 @@ export function explainAIError(error) {
   const message = String(error?.message || '');
   if (error?.name === 'AbortError' || error?.name === 'TimeoutError') return '接続確認が時間切れになりました。通信環境やサーバーの起動状態を確認してください。';
   if (status === 401 || status === 403 || /API_KEY_INVALID|API key not valid|APIキーが設定/.test(message)) return 'APIキーが未設定・無効、またはアクセスが許可されていません。AI設定でキーと利用権限を確認してください。';
-  if (status === 429 || /\b429\b/.test(message)) return '利用回数・トークン・料金枠などの上限に達しました。Google AI Studioで利用枠を確認し、必要に応じて時間を置いて再試行してください。';
+  if (status === 429 || /\b429\b/.test(message)) {
+    const { perDay, seconds } = quotaDetail(error);
+    const wait = seconds === null ? '' : seconds >= 3600 ? `約${Math.ceil(seconds / 3600)}時間後` : seconds >= 90 ? `約${Math.ceil(seconds / 60)}分後` : `約${seconds}秒後`;
+    if (perDay) return `無料枠の「1日あたりの利用回数」の上限に達しました。${wait ? `${wait}に回復します。` : '日付が変わると回復します。'}待たずに続けるには、AI設定で別のモデル(モデルごとに上限が別です)へ切り替えるか、有料プランを設定してください。既存のマップは保持しています。`;
+    if (seconds !== null) return `1分あたりの利用回数の上限に達しました。${wait}に再試行できます。既存のマップは保持しています。`;
+    return '利用回数・トークン・料金枠などの上限に達しました。Google AI Studioで利用枠を確認し、必要に応じて時間を置いて再試行してください。';
+  }
   if (status === 404 || /\b404\b/.test(message)) return '選択したモデル、またはローカルサーバーの接続先が見つかりません。AI設定で確認してください。';
   if (status >= 500 || /\b50[0234]\b/.test(message)) return 'AIサーバーでエラーが発生しています。少し時間を置いて再試行してください。';
   if (error instanceof SyntaxError) return 'AIの応答をマップとして読み込めませんでした。指示を短くするか、モデルを変更して再試行してください。';

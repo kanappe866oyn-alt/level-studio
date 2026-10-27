@@ -74,7 +74,7 @@ export function analyzeWalkability(objects, { cellSize = 0.5, maxCells = 50000, 
       if (target.object.id === start.id) continue;
       const pair = { from: start.id, to: target.object.id };
       if (target.keys.some(k => visited.has(k))) result.reachable.push(pair);
-      else if (!limited) { result.unreachable.push(pair); result.issues.push(`${start.id} から ${target.object.id} への歩行経路を確認できません。階段・床の接続と頭上の余裕を確認してください。`); }
+      else if (!limited) { result.unreachable.push(pair); result.issues.push(`${start.id} から ${target.object.id} への歩行経路を確認できません。階段・床の接続と頭上の余裕を確認してください。歩かせない背景の岩壁・崖なら、roleをcliffまたはwallにしてください。`); }
     }
   }
   result.status = limited ? 'limited' : result.issues.length ? 'warning' : targets.length ? 'checked' : 'no-targets';
