@@ -10,9 +10,7 @@ import { createPlayProgress } from '../core/playProgress';
 export default function FPSController({ objects, startPos, startLookAt, onLock, onUnlock, onProgress }) {
   const { camera, gl } = useThree();
   const controlsRef = useRef();
-  const world = useMemo(() => createSpatialWorld(objects), [objects]);
-  if (import.meta.env.DEV) window.__walkCamera = camera;
-  const velocityY = useRef(0);
+  const world = useMemo(() => createSpatialWorld(objects), [objects]);  const velocityY = useRef(0);
   const progress = useRef();
   const direction = useRef(new THREE.Vector3());
   const keys = useRef({ forward: false, backward: false, left: false, right: false });

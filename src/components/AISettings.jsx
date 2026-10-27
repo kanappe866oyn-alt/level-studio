@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { checkAIConnection, listGenerationModels, explainAIError, normalizeLocalUrl, saveSessionKey, getSessionStorage } from '../core/aiSettings';
 
+import { MODEL_PROFILES, modelProfile, modelProfileKey } from '../core/modelProfiles';
+
 export default function AISettings({ mode, setMode, model, setModel, apiKey, setApiKey, environmentKey, localUrl, setLocalUrl, connection, setConnection, onClose }) {
   const [visibleKey, setVisibleKey] = useState(false);
   const [remember, setRemember] = useState(() => {
@@ -42,7 +44,7 @@ export default function AISettings({ mode, setMode, model, setModel, apiKey, set
     } catch (error) { if (request.current === controller) setModelMessage(explainAIError(error)); }
     finally { clearTimeout(timeout); if (request.current === controller) setListing(false); }
   };
-  const modelChoices = models.length ? [...models] : [{ id: 'gemini-pro-latest', label: 'Pro（自動更新）' }, { id: 'gemini-flash-latest', label: 'Flash（自動更新）' }, { id: 'gemini-2.5-pro', label: 'gemini-2.5-pro' }, { id: 'gemini-2.5-flash', label: 'gemini-2.5-flash' }];
+  const modelChoices = models.length ? [...models] : [...MODEL_PROFILES.map(profile => ({ id: profile.id, label: profile.label })), { id: 'gemini-2.5-pro', label: 'gemini-2.5-pro' }, { id: 'gemini-2.5-flash', label: 'gemini-2.5-flash' }];
   if (!modelChoices.some(option => option.id === model)) modelChoices.unshift({ id: model, label: `${model}（現在の選択）` });
   const check = async () => {
     if (mode === 'local') {
@@ -75,7 +77,8 @@ export default function AISettings({ mode, setMode, model, setModel, apiKey, set
       <div className="ai-settings-body">
         <label>利用するAI<select className="sel" value={mode} autoFocus onChange={e => { invalidate(); setMode(e.target.value); }}><option value="gemini">Gemini（クラウド）</option><option value="local">自作AI（ローカル）</option></select></label>
         {mode === 'gemini' ? <>
-          <label>生成モデル<select aria-label="生成モデル" className="sel" value={/flash/.test(model) ? 'flash' : /pro/.test(model) ? 'pro' : 'custom'} onChange={e => { invalidate(); setModel(e.target.value === 'flash' ? 'gemini-flash-latest' : 'gemini-pro-latest'); }}><option value="flash">Flash</option><option value="pro">Pro</option>{!/(flash|pro)/.test(model) && <option value="custom">個別指定</option>}</select></label>
+          <label>生成モデル<select aria-label="生成モデル" className="sel" value={modelProfileKey(model)} onChange={e => { const chosen = MODEL_PROFILES.find(profile => profile.key === e.target.value); if (chosen) { invalidate(); setModel(chosen.id); } }}>{MODEL_PROFILES.map(profile => <option key={profile.key} value={profile.key}>{profile.label}</option>)}{!modelProfile(model) && <option value="custom">{model}（個別指定）</option>}</select></label>
+          {modelProfile(model) && <p className="model-note" role="note">{modelProfile(model).note}</p>}
           <details><summary>モデルの詳細設定</summary>
           <label>使用するモデルID<select aria-label="モデルID" className="sel" value={model} onChange={e => { invalidate(); setModel(e.target.value); }}>{modelChoices.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
           <button type="button" className="tbtn" disabled={checking || listing || !(apiKey.trim() || environmentKey)} onClick={loadModels}>{listing ? 'モデル候補を確認中…' : '利用できるモデルを確認'}</button>

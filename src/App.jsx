@@ -50,6 +50,7 @@ import NatureBuilder from './components/NatureBuilder';
 import TerrainBuilder from './components/TerrainBuilder.jsx';
 import { appendEditHistory } from './core/editHistory.js';
 import { createNatureWorkspace } from './core/natureWorkspace';
+import { DEFAULT_CLOUD_MODEL } from './core/modelProfiles';
 import { readSessionKey, explainAIError, shouldRetryAIError, pickFallbackModel } from './core/aiSettings';
 import { createAIRequestBudget } from './core/aiRequestBudget';
 
@@ -293,7 +294,7 @@ export default function App({ initialWorkspace: preparedWorkspace = null, initia
 
 
   const [aiMode, setAiMode] = useState("gemini");
-  const [cloudModel, setCloudModel] = useState('gemini-flash-latest');
+  const [cloudModel, setCloudModel] = useState(DEFAULT_CLOUD_MODEL);
 
   const [userApiKey, setUserApiKey] = useState(() => {
     try { return readSessionKey(sessionStorage); } catch { return ''; }

@@ -81,7 +81,10 @@ export function explainAIError(error) {
     return '利用回数・トークン・料金枠などの上限に達しました。Google AI Studioで利用枠を確認し、必要に応じて時間を置いて再試行してください。';
   }
   if (status === 404 || /\b404\b/.test(message)) return '選択したモデル、またはローカルサーバーの接続先が見つかりません。AI設定で確認してください。';
-  if (status >= 500 || /\b50[0234]\b/.test(message)) return 'AIサーバーでエラーが発生しています。少し時間を置いて再試行してください。';
+  if (status >= 500 || /\b50[0234]\b/.test(message)) {
+    const code = Number.isFinite(status) && status ? `HTTP ${status}${error?.statusText ? ` ${error.statusText}` : ''}` : message.match(/\b50[0234]\b/)?.[0];
+    return `AIサーバーでエラーが発生しています${code ? `（${code}）` : ''}。少し時間を置いて再試行してください。`;
+  }
   if (error instanceof SyntaxError) return 'AIの応答をマップとして読み込めませんでした。指示を短くするか、モデルを変更して再試行してください。';
   if (/Failed to fetch|NetworkError|Network request failed|Load failed|ローカルAIサーバー/i.test(message)) return '接続できませんでした。ネット接続、ローカルサーバーの起動、接続先URL、ブラウザの通信制限を確認してください。';
   if (error instanceof TypeError) return 'アプリ内部の処理でエラーが発生しました。発生した操作を確認する必要があります。';
