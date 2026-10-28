@@ -339,7 +339,7 @@ export default function App({ initialWorkspace: preparedWorkspace = null, initia
   const [naturePlan, setNaturePlan] = useState(initialWorkspace?.project.metadata.nature_plan ? canonicalNaturePlan(initialWorkspace.project.metadata.nature_plan) : null);
   const [natureBuilderPlan, setNatureBuilderPlan] = useState(initialWorkspace?.project.metadata.nature_plan ? canonicalNaturePlan(initialWorkspace.project.metadata.nature_plan) : DEFAULT_NATURE_PLAN);
 
-  const [generationMode, setGenerationMode] = useState(initialWorkspace?.project.metadata.game_mode || "combat");
+  const [generationMode, setGenerationMode] = useState(initialWorkspace?.project.metadata.game_mode || "free");
 
   const [stageTheme, setStageTheme] = useState(initialWorkspace?.project.metadata.theme || "");
 

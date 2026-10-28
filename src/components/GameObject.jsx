@@ -20,13 +20,14 @@ import { hasSpatialWallCourses, hasSpatialWallPanels, hasMutedRailingPosts } fro
 import { isSpatialRailing } from '../core/railingParts.js';
 import { TERRAIN_DISTRICTS } from '../core/terrainMaterials.js';
 import { rockStrataColors, finishRockStrataGeometry } from '../core/rockStrataGeometry.js';
+import { publicAssetUrl } from '../core/publicAssetUrl.js';
 
 // ============================================================================
 // CustomModel：GLB読み込み＋色・テクスチャ上書き（ロジックは既存を維持）
 // ============================================================================
 const CustomModel = ({ id, role, objSize, variant, material, customModelUrl, color, color2, color3, onColorCountDetected, modelDimensions, onModelSizeDetected, fitDimensions = false, natural = false }) => {
   const path = customModelUrl ? customModelUrl : getModelPath(role, variant || 1);
-  const { scene } = useGLTF(path);
+  const { scene } = useGLTF(publicAssetUrl(path));
 
   const [overrideTexture, setOverrideTexture] = React.useState(null);
 
@@ -37,7 +38,7 @@ const CustomModel = ({ id, role, objSize, variant, material, customModelUrl, col
       const textureUrl = `/${role}/mat_${material}.jpg`;
 
       loader.load(
-        textureUrl,
+        publicAssetUrl(textureUrl),
         (tex) => {
           tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
           tex.repeat.set(1, 1);
@@ -163,7 +164,7 @@ const TiledMaterial = ({ role, material, objSize, color, isSelected }) => {
   const paths = useNormal
     ? [`/${role}/mat_${matIdx}.jpg`, `/${role}/mat_${matIdx}_normal.jpg`]
     : [`/${role}/mat_${matIdx}.jpg`];
-  const maps = useTexture(paths);
+  const maps = useTexture(paths.map(path => publicAssetUrl(path)));
   const texture = Array.isArray(maps) ? maps[0] : maps;
   const normalMap = Array.isArray(maps) ? (maps[1] || null) : null;
 

@@ -179,7 +179,9 @@ export function assembleGeneration(raw, normalized, brief, { allowFloating = fal
     // Trees, rocks and plants stand on the ground. A model's height guess is often off by metres
     // over relief; with no floor in reach and generated terrain below, seat it on that terrain
     // instead of spending a repair request on a floating tree.
-    if (!allowFloating && !s?.supportId && ['tree', 'rock', 'plant'].includes(o.role) && byId.has('__generated_terrain') &&
+    // The same holds for any other model that stands on the ground (a tower, cover, a prop); buildings have their own plots,
+    // and walls and doors belong to the structures they are part of.
+    if (!allowFloating && !s?.supportId && (['tree', 'rock', 'plant'].includes(o.role) || (ASSETS.SEMANTIC_PREFABS[o.role]?.groundSnap && !['building', 'wall', 'door', 'spawn', 'goal', 'checkpoint', 'exit'].includes(o.role))) && byId.has('__generated_terrain') &&
         Number.isFinite(surfaceTop(byId.get('__generated_terrain'), o.pos[0], o.pos[2]))) s = { ...s, supportId: '__generated_terrain' };
     // A start/goal marker a little off the compiled terrain surface is the
     // commonest height slip; seat it on the surface instead of failing the run.

@@ -78,7 +78,7 @@ export function validateGenerationReview(review, brief, objects) {
 const kinds = ['count', 'groundWidth', 'groundDepth', 'width', 'depth', 'height', 'elevation', 'padElevation', 'color', 'leftOf', 'rightOf', 'above', 'clearance'];
 const comparisons = ['exact', 'atLeast', 'atMost'];
 const roles = Object.keys(ASSETS.SEMANTIC_PREFABS);
-const subjectWords = { landform: '地形|丘|谷|山|広場|平場|landform', ground: '地面|土台|ステージ|マップ', tree: '木|樹木|樹|tree', rock: '岩|岩石|rock', water: '水|川|池|湖|water', bridge: '橋|歩道橋|高架|bridge', building: '建物|建築|ビル|building', wall: '壁|wall', cover: '遮蔽物|cover', tower: '塔|タワー|tower', spawn: 'スタート|開始地点|入口|spawn', goal: 'ゴール|目的地|goal', climb: '階段|climb', platform: '足場|屋上|platform', corridor: '通路|回廊|corridor', path: '道|小道|散歩道|path', plant: '植栽|草|低木|plant', landmark: '目印|ランドマーク|landmark' };
+const subjectWords = { landform: '地形|丘|谷|山|広場|平場|landform', ground: '地面|土台|ステージ|マップ', tree: '木|樹木|樹|tree', rock: '岩|岩石|rock', water: '水|川|池|湖|water', bridge: '橋|歩道橋|高架|bridge', building: '建物|建築|ビル|building', wall: '壁|wall', cover: '遮蔽物|cover', tower: '塔|タワー|tower', spawn: 'スタート|開始地点|入口|スポーン|spawn', goal: 'ゴール|目的地|goal', climb: '階段|climb', platform: '足場|屋上|platform', corridor: '通路|回廊|corridor', path: '道|小道|散歩道|path', plant: '植栽|草|低木|plant', landmark: '目印|ランドマーク|landmark' };
 export const GENERATION_BRIEF_SCHEMA = { type: 'object', properties: {
   imageObservations: { type: 'array', items: { type: 'string' } },
   requirements: { type: 'array', items: { type: 'object', properties: {
@@ -248,7 +248,27 @@ export function validateGenerationBrief(input, { request, theme = '', mode, hasI
     try {
     if (!item || !kinds.includes(item.kind) || !allowed.includes(item.role) || !allowed.includes(item.targetRole) || !comparisons.includes(item.comparison)) throw new Error('必須条件の対象や種類が不正です。');
     const evidence = text(item.evidence, 300, '条件の根拠');
+    // Mode defaults are enforced separately; they are not quotations from the user.
+    if (mode === 'combat' && item.kind === 'count' && item.role === 'spawn'
+      && evidence === '戦闘用アリーナのスポーン位置' && !request.includes(evidence)
+      && !/スポーン|spawn|開始位置|開始地点/i.test(request)
+      && Number(item.value) === ASSETS.MODE_CONFIG.combat.minCounts.spawn
+      && ['exact', 'atLeast'].includes(item.comparison)) return null;
+    // A count of something the mode itself requires (an arena's cover, tower and spawns) that the request never names is the
+    // reader repeating the mode's rule, whatever it cites, not the user's condition: the mode's own minimum is checked on the
+    // finished stage anyway. Counts the user did write are still extracted from the request below.
+    const modeRule = ASSETS.MODE_CONFIG[mode];
+    const modeMinimum = modeRule?.minCounts?.[item.role] ?? (modeRule?.requiredRoles?.includes(item.role) ? 1 : undefined);
+    if (item.kind === 'count' && modeMinimum !== undefined && Number(item.value) === modeMinimum && ['exact', 'atLeast'].includes(item.comparison)
+      && !new RegExp(subjectWords[item.role] || item.role, 'i').test(request)) return null;
     if (!request.includes(evidence)) throw new Error('必須条件の根拠が指示にありません。');
+    // Qualitative density remains a reviewed goal, never an invented hard count.
+    if (item.kind === 'count' && new RegExp(subjectWords[item.role] || item.role, 'i').test(evidence)
+      && /多く|多い|多め|たくさん|少なめ|少ない/.test(evidence)
+      && !/[0-9０-９一二三四五六七八九十百]|以上|以下|最低|最大|不要|なし|無し|置かない/.test(evidence)) {
+      recoveredGoals.push({ description: `${evidence}（配置の密度を最終配置で照合）`, source: 'request', evidence });
+      return null;
+    }
     // "about five trees" is a target, not a count to hold exactly; keep it as a goal for the final review.
     if (item.kind === 'count' && /約|およそ|おおよそ|だいたい|大体|ほぼ|程度|ほど|くらい|ぐらい|前後/.test(evidence) && !/ちょうど|ぴったり|きっかり/.test(evidence)) {
       recoveredGoals.push({ description: `${evidence}（個数の目安を最終配置で照合）`, source: 'request', evidence });

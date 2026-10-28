@@ -55,7 +55,7 @@
     "combat": {
       "label": "🔫 対戦アリーナ (Combat)",
       "description": "遮蔽物で射線を切り、高所を取り合う撃ち合いの面白さを作るモード。",
-      "roles": ["landform", "ground", "platform", "wall", "room", "corridor", "boundary", "cover", "tower", "climb", "bridge", "spawn", "door", "window", "vehicle", "rock", "building", "prop"],
+      "roles": ["landform", "ground", "platform", "wall", "room", "corridor", "boundary", "cover", "tower", "climb", "bridge", "spawn", "door", "window", "vehicle", "rock", "water", "cliff", "path", "tree", "plant", "building", "prop"],
       "requiredRoles": ["ground", "cover", "tower", "spawn"],
       "minCounts": { "cover": 4, "tower": 1, "spawn": 2 }
     },

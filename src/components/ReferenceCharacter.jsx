@@ -4,7 +4,7 @@ import { measureVisibleModel } from '../core/modelSizing';
 import { getCharacterTransform } from '../core/worldScale';
 
 export default function ReferenceCharacter() {
-  const { scene } = useGLTF('/dummy.glb');
+  const { scene } = useGLTF(`${import.meta.env.BASE_URL}dummy.glb`);
   const model = useMemo(() => scene.clone(), [scene]);
   const transform = useMemo(() => {
     const bounds = measureVisibleModel(scene);

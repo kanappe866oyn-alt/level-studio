@@ -61,7 +61,7 @@ export default function LandingPage({ scenes, onLaunch, onSelectScene, drafts = 
           </div>
           <figure className="lp-preview lp-real-preview">
             <div className="lp-preview-bar"><span><i /> GENERATED STAGE</span><span>FREE / EXPLORATION</span></div>
-            <img src="/images/stage-overview.png" alt="構造ルールで生成した、岩山・段丘・住宅・上層回廊がある集落の実画面" width="1280" height="720" fetchPriority="high" />
+            <img src={`${import.meta.env.BASE_URL}images/stage-overview.png`} alt="構造ルールで生成した、岩山・段丘・住宅・上層回廊がある集落の実画面" width="1280" height="720" fetchPriority="high" />
             <figcaption className="lp-preview-footer"><span>土台から組み立て、実際に歩ける。</span><small>実際の生成画面・番号8</small></figcaption>
           </figure>
         </section>
