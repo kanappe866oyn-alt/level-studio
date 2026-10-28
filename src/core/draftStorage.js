@@ -5,7 +5,7 @@ import { canonicalNaturePlan } from './natureGenerator.js';
 
 export const DRAFT_STORAGE_KEY = 'world-studio-drafts-v1';
 export const MAX_DRAFTS = 5;
-const objectFields = ['id', 'name', 'role', 'type', 'variant', 'material', 'pos', 'size', 'rot', 'points', 'color', 'color2', 'color3', 'terrainProfile', 'riverProfile', 'customModelUrl', 'modelDimensions', 'modelGrounding', 'buildingPlacement', 'detectedColorCount', 'spatialAppearance'];
+const objectFields = ['id', 'name', 'role', 'type', 'variant', 'material', 'pos', 'size', 'rot', 'points', 'color', 'color2', 'color3', 'terrainProfile', 'riverProfile', 'customModelUrl', 'modelDimensions', 'modelGrounding', 'buildingPlacement', 'detectedColorCount', 'spatialAppearance', 'bridgeStyle'];
 const pick = (object, fields) => Object.fromEntries(fields.filter(key => object?.[key] !== undefined).map(key => [key, object[key]]));
 
 export function getDraftStorage() {

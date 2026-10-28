@@ -431,7 +431,7 @@ const COMPOSITE_RENDERERS = {
   water: obj => <River obj={obj} />,
   landform: (obj, _color, _size, natural, bridges) => <Landform obj={obj} natural={natural} bridges={bridges} />,
   corridor: (obj, _color, _size, natural) => natural ? <NaturePaving obj={obj} /> : null,
-  bridge: (obj, _color, _size, natural) => natural ? <NaturePaving obj={obj} kind="wood" /> : null,
+  bridge: (obj, _color, _size, natural) => natural || obj.bridgeStyle === 'wood' ? <NaturePaving obj={obj} kind="wood" /> : null,
   climb: buildClimb,
   tower: buildTower,
   barrier: buildBarrier,

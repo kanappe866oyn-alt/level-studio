@@ -1,6 +1,6 @@
 import { getModelDefault } from './modelCatalog.js';
 import ASSETS from '../assets.json' with { type: 'json' };
-import { boxesOverlap, getBounds, getCollisionParts, surfaceTop } from './spatialGeometry.js';
+import { boxesOverlap, footprintContains, getBounds, getCollisionParts, surfaceTop } from './spatialGeometry.js';
 
 // Local landscape dressing for AI-designed terrain. Gemini designs the relief,
 // roads, pads and requested objects; this pass adds the background groves,
@@ -9,6 +9,8 @@ import { boxesOverlap, getBounds, getCollisionParts, surfaceTop } from './spatia
 const TERRAIN_ID = '__generated_terrain';
 const prefix = 'dress_';
 const TREES = [1, 2, 3, 4, 5, 6, 8, 11, 12, 9, 10];
+// Green-leaved models; 6 and 8 have red and 11 pink foliage, kept for single accents and never for a wood.
+const GREEN_TREES = [1, 2, 3, 4, 5, 12, 9, 10];
 const PLANTS = [1, 2, 5, 6, 3, 4];
 const GROUND_RULES = { grass: { trees: 1, plants: 1, rocks: 1 }, rock: { trees: 0.15, plants: 0.3, rocks: 2 },
   paving: { trees: 0.1, plants: 0.2, rocks: 0.2 }, setts: { trees: 0.1, plants: 0.2, rocks: 0.2 }, slate: { trees: 0.1, plants: 0.2, rocks: 0.5 } };
@@ -29,7 +31,7 @@ function distanceToSegment(x, z, a, b) {
   return Math.hypot(x - a.x - t * dx, z - a.z - t * dz);
 }
 
-export function dressGeneratedTerrain({ objects, brief, compilation, mode, normalize }) {
+export function dressGeneratedTerrain({ objects, brief, compilation, mode, normalize, density = 1 }) {
   const terrain = objects.find(o => o.id === TERRAIN_ID && o.terrainProfile?.surfaceGrid);
   if (mode !== 'free' || !terrain || !compilation?.source || objects.some(o => o.id.startsWith(prefix))) return { objects, dressing: null };
   const rules = GROUND_RULES[terrain.terrainProfile.surfaceMaterial] || GROUND_RULES.grass;
@@ -49,8 +51,12 @@ export function dressGeneratedTerrain({ objects, brief, compilation, mode, norma
   // never closes the route the walking check found.
   const accessZones = objects.filter(o => ['bridge', 'climb', 'platform'].includes(o.role) && o.type !== 'spline').map(o => { const b = getBounds(o); return { minX: b.minX - 3, maxX: b.maxX + 3, minZ: b.minZ - 3, maxZ: b.maxZ + 3 }; });
 
-  // Water is walkable-unsafe, so it is not a collision part, but nothing may be grown into it either.
-  const waters = objects.filter(o => o.role === 'water' && o.type !== 'spline' && Array.isArray(o.pos) && Array.isArray(o.size)).map(getBounds);
+  // Water is walkable-unsafe, so it is not a collision part, but nothing may be grown into it either. A river is tested
+  // against its own winding course: the box around a diagonal river covers most of the map and would refuse every tree.
+  const waters = objects.filter(o => o.role === 'water' && o.type !== 'spline' && Array.isArray(o.pos) && Array.isArray(o.size));
+  const inWater = (object, margin) => { const b = getBounds(object), points = [];
+    for (const u of [0, 0.5, 1]) for (const v of [0, 0.5, 1]) points.push([b.minX - margin + (b.maxX - b.minX + 2 * margin) * u, b.minZ - margin + (b.maxZ - b.minZ + 2 * margin) * v]);
+    return waters.some(w => points.some(([x, z]) => footprintContains(w, x, z))); };
 
   const half = [terrain.size[0] / 2, terrain.size[2] / 2], centre = [terrain.pos[0], terrain.pos[2]];
   const slopeAt = (x, z, d = 0.8) => {
@@ -67,8 +73,7 @@ export function dressGeneratedTerrain({ objects, brief, compilation, mode, norma
     if (pads.some(p => Math.abs(x - p.x) < p.width / 2 + radius * 0.8 + extra && Math.abs(z - p.z) < p.depth / 2 + radius * 0.8 + extra)) return false;
     if (spots.some(s => Math.hypot(x - s.pos[0], z - s.pos[2]) < radius + 2.5)) return false;
     if (accessZones.some(a => x + radius > a.minX && x - radius < a.maxX && z + radius > a.minZ && z - radius < a.maxZ)) return false;
-    const own = getBounds(object);
-    if (waters.some(w => own.maxX + 0.2 > w.minX && own.minX - 0.2 < w.maxX && own.maxZ + 0.2 > w.minZ && own.minZ - 0.2 < w.maxZ)) return false;
+    if (inWater(object, 0.6)) return false;
     const inflated = { ...object, size: [object.size[0] + 0.4, object.size[1], object.size[2] + 0.4] };
     return !blockers.some(part => boxesOverlap(inflated, part)) && !accepted.some(o => boxesOverlap(inflated, o));
   };
@@ -86,12 +91,17 @@ export function dressGeneratedTerrain({ objects, brief, compilation, mode, norma
   };
 
   const stats = { trees: 0, plants: 0, rocks: 0 };
+  // A forest, wood or grove in the request (森・林・木々・木立) is a dense wood, not the open meadow's scattered groves.
+  const briefText = [...(brief?.designGoals || []).flatMap(g => [g.description, g.evidence]), brief?.spatialStrategy, ...(brief?.requirements || []).map(r => r.evidence)].join(' ');
+  const forest = /森|林|木々|木立|樹林|樹海|ジャングル/.test(briefText) && !/森(?:は|を)?(?:不要|なし|無し)|木(?:は|を)?(?:不要|なし|無し)/.test(briefText);
   const budget = {
-    trees: counted.has('tree') ? 0 : Math.round(Math.max(3, Math.min(34, area / 150)) * rules.trees),
-    plants: counted.has('plant') ? 0 : Math.round(Math.max(6, Math.min(80, area / 45)) * rules.plants),
+    // `density` thins the whole dressing evenly when the full one would block a walking route (see generationFidelity).
+    trees: counted.has('tree') ? 0 : Math.round(Math.max(3, Math.min(forest ? 160 : 34, area / (forest ? 38 : 150))) * rules.trees),
+    plants: counted.has('plant') ? 0 : Math.round(Math.max(6, Math.min(forest ? 120 : 80, area / (forest ? 30 : 45))) * rules.plants),
     rocks: counted.has('rock') ? 0 : Math.round(Math.max(2, Math.min(16, area / 220)) * rules.rocks),
   };
-  const groveVariants = [TREES[Math.floor(random() * 6)], TREES[Math.floor(random() * 6)]];
+  for (const key of Object.keys(budget)) budget[key] = Math.round(budget[key] * density);
+  const groveVariants = [GREEN_TREES[Math.floor(random() * 5)], GREEN_TREES[Math.floor(random() * 5)]];
   const accepted = [];
   const tryPlace = (role, attempts, limit, pick) => {
     for (let i = 0; i < attempts && stats[role + 's'] < limit; i++) {
@@ -108,8 +118,8 @@ export function dressGeneratedTerrain({ objects, brief, compilation, mode, norma
 
   tryPlace('tree', budget.trees * 60, budget.trees, (x, z) => {
     // Woods where the grove field is high, open meadow elsewhere, with a few lone trees.
-    if (random() > Math.max(smoothstep(0.42, 0.72, grove(x, z)), 0.06)) return null;
-    const scale = 0.55 + random() * 0.4, variant = random() < 0.8 ? groveVariants[random() < 0.5 ? 0 : 1] : TREES[Math.floor(random() * TREES.length)];
+    if (random() > Math.max(forest ? smoothstep(0.15, 0.5, grove(x, z)) : smoothstep(0.42, 0.72, grove(x, z)), forest ? 0.3 : 0.06)) return null;
+    const scale = 0.55 + random() * 0.4, accents = forest ? GREEN_TREES : TREES, variant = random() < 0.8 ? groveVariants[random() < 0.5 ? 0 : 1] : accents[Math.floor(random() * accents.length)];
     return { variant, scale, maxSlope: 0.45, sink: 0.05, extra: 0.8 };
   });
   const trees = accepted.filter(o => o.role === 'tree').map(o => o.pos);
@@ -130,5 +140,5 @@ export function dressGeneratedTerrain({ objects, brief, compilation, mode, norma
   if (!accepted.length) return { objects, dressing: null };
   const known = new Set(objects.map(o => o.id));
   const additions = normalize ? normalize([...objects, ...accepted]).filter(o => !known.has(o.id)) : accepted;
-  return { objects: [...objects, ...additions], dressing: { version: 1, seed, ...stats, scope: '指示で個数を指定していない木・下草・岩を、傾斜・道・平場・建物・出入口を避けて自動配置' } };
+  return { objects: [...objects, ...additions], dressing: { version: 1, seed, ...stats, ...(forest ? { forest: true } : {}), scope: '指示で個数を指定していない木・下草・岩を、傾斜・道・平場・建物・出入口を避けて自動配置' } };
 }

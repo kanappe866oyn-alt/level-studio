@@ -152,7 +152,8 @@ export const validateObjects = (data) => {
     const spatialAppearance = obj.spatialAppearance ? validateSpatialAppearance(obj.spatialAppearance) : undefined;
     const modelGrounding = obj.modelGrounding ? validateModelGrounding(obj.modelGrounding, { role, size }) : undefined;
     const buildingPlacement = obj.buildingPlacement ? validateBuildingPlacement(obj.buildingPlacement, { role, variant }) : undefined;
-    return { id, type, role, variant, material, customModelUrl, prefab_name: prefab.name, pos, size, rot, color: finalColor, ...extraColors, name, points, ...(terrainProfile ? { terrainProfile } : {}), ...(riverProfile ? { riverProfile } : {}), ...(modelDimensions ? { modelDimensions } : {}), ...(modelGrounding ? { modelGrounding } : {}), ...(buildingPlacement ? { buildingPlacement } : {}), ...(spatialAppearance ? { spatialAppearance } : {}) };
+    const bridgeStyle = role === 'bridge' && obj.bridgeStyle === 'wood' ? 'wood' : undefined;
+    return { id, type, role, variant, material, customModelUrl, prefab_name: prefab.name, pos, size, rot, color: finalColor, ...extraColors, name, points, ...(terrainProfile ? { terrainProfile } : {}), ...(riverProfile ? { riverProfile } : {}), ...(modelDimensions ? { modelDimensions } : {}), ...(modelGrounding ? { modelGrounding } : {}), ...(buildingPlacement ? { buildingPlacement } : {}), ...(spatialAppearance ? { spatialAppearance } : {}), ...(bridgeStyle ? { bridgeStyle } : {}) };
   });
 
   if (!hasFloor) {

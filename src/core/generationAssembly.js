@@ -268,11 +268,67 @@ posは中心座標。水平床ground/platform/bridge/corridorにはsurfaceY（�
 建物はcolor=壁、color2=屋根、color3=細部。白壁と青緑屋根なら別々に指定。自然素材モデルのmaterial=0は元の材質を保持する。全てに同じ画像テクスチャを貼らない。説明は簡潔な日本語、spatial_planは400文字以内、key_decisionsは最大6件。長文や反復を避け、トークンを形状の配置に使う。`;
 
 // Reuse existing metre-scaled materials without adding solids or changing colours.
+// A bridge the model laid over a river is a plain box: it gets a wooden deck and a wooden railing along both long sides,
+// the same parts the nature stages build (a deck narrower than 2.4 m keeps no railing, so the way across stays wide enough).
+// Rails already there, a custom model or a height the request set for the bridge are left as they are.
+// Railings are fences (role barrier); a mode that does not use barriers gets the wooden deck alone.
+export function finishRiverBridges(objects, { allowedRoles } = {}) {
+  const waters = objects.filter(o => o.role === 'water' && o.type === 'box');
+  const added = [], changes = [];
+  const next = objects.map(o => {
+    if (o.role !== 'bridge' || o.type !== 'box' || o.customModelUrl || o.spatialAppearance || !isUpright(o) || !waters.some(w => footprintContains(w, o.pos[0], o.pos[2]))) return o;
+    const along = o.size[0] >= o.size[2] ? 0 : 2, across = along === 0 ? 2 : 0, length = o.size[along], width = o.size[across], top = o.pos[1] + o.size[1] / 2;
+    const deck = { ...o, bridgeStyle: 'wood', color: !o.color || o.color.toLowerCase() === ASSETS.SEMANTIC_PREFABS.bridge.color ? '#8a6a47' : o.color };
+    const railed = objects.some(r => r.role === 'barrier' && boxesOverlap(r, { ...o, size: [o.size[0], o.size[1] + 2, o.size[2]] }));
+    const fenced = width >= 2.4 && !railed && (!allowedRoles || allowedRoles.includes('barrier'));
+    if (fenced) for (const side of [-1, 1]) {
+      const local = [0, 0]; local[across === 0 ? 0 : 1] = side * (width / 2 - 0.11);
+      // The fence model repeats along its own x axis, so the rail is laid along x and turned to follow the deck.
+      const [x, z] = worldXZ(o, local[0], local[1]), yaw = (o.rot?.[1] || 0) + (along === 2 ? Math.PI / 2 : 0);
+      added.push({ id: `${o.id}_rail_${side < 0 ? 'l' : 'r'}`, name: '橋の木製欄干', role: 'barrier', type: 'box', variant: 2, material: 0, color: deck.color, pos: [+x.toFixed(3), +(top + 0.55).toFixed(3), +z.toFixed(3)], size: [+Math.max(0.5, length - 0.2).toFixed(3), 1.1, 0.22], rot: [0, +yaw.toFixed(4), 0] });
+    }
+    changes.push({ id: o.id, reason: `川に架かる${o.id}を木の床にし${fenced ? '、両側に木の欄干を付けた' : ''}（位置・大きさは変更なし）` });
+    return deck;
+  });
+  return { objects: [...next, ...added], changes };
+}
+
+// A tree, bush or rock the model put in a river's course stands in the water. It is slid sideways to the nearest
+// dry, free ground on the same terrain and seated on it (its kind, size and colour unchanged). An object the
+// request places relative to another one (left of, right of, above) is left where it is.
+export function moveNatureOutOfRivers(objects, brief = {}) {
+  const waters = objects.filter(o => o.role === 'water' && o.type === 'box' && !o.customModelUrl);
+  const terrain = objects.find(o => o.id === '__generated_terrain'), ground = objects.find(o => o.role === 'ground');
+  const anchored = new Set((brief.requirements || []).filter(r => ['leftOf', 'rightOf', 'above'].includes(r.kind)).flatMap(r => [r.role, r.targetRole]));
+  const solids = objects.filter(o => !['water', 'ground', 'landform', 'tree', 'plant', 'rock'].includes(o.role) && o.type === 'box' && Array.isArray(o.size));
+  const changes = [];
+  const wet = (o, x, z) => { const r = Math.min(o.size[0], o.size[2]) * 0.3 + 0.4;
+    return waters.some(w => [[0, 0], [r, 0], [-r, 0], [0, r], [0, -r]].some(([dx, dz]) => footprintContains(w, x + dx, z + dz))); };
+  const next = objects.map(o => {
+    if (!['tree', 'plant', 'rock'].includes(o.role) || o.customModelUrl || anchored.has(o.role) || !Array.isArray(o.pos) || !wet(o, o.pos[0], o.pos[2])) return o;
+    for (let radius = 1; radius <= 16; radius += 1) {
+      const spots = [];
+      for (let k = 0; k < 16; k += 1) { const a = k / 16 * Math.PI * 2; spots.push([o.pos[0] + Math.cos(a) * radius, o.pos[2] + Math.sin(a) * radius]); }
+      for (const [x, z] of spots) {
+        if (wet(o, x, z)) continue;
+        const top = terrain ? surfaceTop(terrain, x, z) : ground && footprintContains(ground, x, z) ? ground.pos[1] + ground.size[1] / 2 : null;
+        if (!Number.isFinite(top)) continue;
+        const moved = { ...o, pos: [+x.toFixed(3), +(o.pos[1] - (terrain ? surfaceTop(terrain, o.pos[0], o.pos[2]) ?? o.pos[1] - o.size[1] / 2 : top) + top).toFixed(3), +z.toFixed(3)] };
+        if (solids.some(s => boxesOverlap(s, moved))) continue;
+        changes.push({ id: o.id, reason: `${o.id}が川の流路の中に立っていたため、(${moved.pos[0].toFixed(1)}, ${moved.pos[2].toFixed(1)})の岸へ${radius}mずらして地面に置いた（種類・大きさ・色は変更なし）` });
+        return moved;
+      }
+    }
+    return o;
+  });
+  return { objects: next, changes };
+}
+
 export function finishGenerationSurfaces(objects, brief = {}) {
   const designText = (brief.designGoals || []).map(g => g.description).join(' ');
   const pavedGround = /中庭|石舗装|石畳|舗装広場/.test(designText) && !/草地|森|土の|芝生/.test(designText);
   return objects.map(o => {
-    if (o.spatialAppearance || o.customModelUrl || o.type !== 'box') return o;
+    if (o.spatialAppearance || o.customModelUrl || o.type !== 'box' || o.bridgeStyle) return o;
     const surface = { ground: pavedGround ? 'paving' : null, wall: 'stucco', platform: 'paving', corridor: 'paving', bridge: 'paving', climb: 'concrete' }[o.role];
     if (!surface) return o;
     return { ...o, spatialAppearance: { version: 1, style: 'harbor', surface, district: 'neutral', category: 'structure', moduleId: 'direct_generation', ...(o.role === 'wall' && o.size[1]>1 && Math.max(o.size[0],o.size[2])>2 ? {edgeTrim:true} : {}) } };

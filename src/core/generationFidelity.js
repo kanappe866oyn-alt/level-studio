@@ -11,7 +11,7 @@ import { generationValidationError } from './generationErrors.js';
 import { getBounds } from './spatialGeometry.js';
 import { serializeSceneForAI } from './sceneSerialization.js';
 import { inspectGeneratedNavigation, generatedPlacementIssues } from './generatedStageInspection.js';
-import { assembleGeneration, finishGenerationSurfaces, GENERATION_ASSEMBLY_PROMPT } from './generationAssembly.js';
+import { assembleGeneration, finishGenerationSurfaces, finishRiverBridges, moveNatureOutOfRivers, GENERATION_ASSEMBLY_PROMPT } from './generationAssembly.js';
 import { dressGeneratedTerrain as dressOnce } from './terrainDressing.js';
 import { colourFromImageReading } from './imageAppearance.js';
 
@@ -93,15 +93,20 @@ export const GENERATION_BRIEF_SCHEMA = { type: 'object', properties: {
 }, required: ['imageObservations', 'requirements', 'designGoals', 'spatialStrategy', 'unsupported'] };
 
 
-// The dressing (trees, undergrowth, rocks) is added after the walking check. It must not undo what the check found: if the
-// dressed stage can no longer be walked as the undressed one could, the dressing is withheld (and the reason recorded),
-// never delivered on top of a blocked route.
+// The dressing (trees, undergrowth, rocks) is added after the walking check. It must not undo what the check found: a dressing
+// that blocks a route the undressed stage could walk is thinned out step by step (a wood with gaps rather than none at all),
+// and withheld (with the reason recorded) only when even the thinnest one blocks; never delivered on top of a blocked route.
 function dressGeneratedTerrain(args) {
-  const dressed = dressOnce(args);
-  if (!dressed.dressing) return dressed;
-  const before = inspectGeneratedNavigation(args.objects), after = inspectGeneratedNavigation(dressed.objects);
-  if (before.issues.length >= after.issues.length) return dressed;
-  return { objects: args.objects, dressing: { ...dressed.dressing, withheld: true, reason: `飾りの木・草・岩を置くと歩行経路(${after.issues[0].slice(0, 60)})が塞がるため、飾りは置かなかった` } };
+  const before = inspectGeneratedNavigation(args.objects);
+  let blocked = null;
+  for (const density of [1, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.25]) {
+    const dressed = dressOnce({ ...args, density });
+    if (!dressed.dressing) return dressed;
+    const after = inspectGeneratedNavigation(dressed.objects);
+    if (before.issues.length >= after.issues.length) return density === 1 ? dressed : { ...dressed, dressing: { ...dressed.dressing, density, reason: `密度100%の飾りでは歩行経路(${blocked.slice(0, 60)})が塞がるため、密度${Math.round(density * 100)}%に減らした` } };
+    blocked ??= after.issues[0];
+  }
+  return { objects: args.objects, dressing: { withheld: true, reason: `飾りの木・草・岩を密度25%まで減らしても歩行経路(${blocked.slice(0, 60)})が塞がるため、飾りは置かなかった` } };
 }
 
 export function generationBriefPrompt(request, theme, mode, hasImage) {
@@ -499,7 +504,12 @@ export async function generateFaithfulStage({ request, theme, mode, hasImage, si
         // Colours the reference image shows, for objects the model left at the catalogue default.
         const coloured = colourFromImageReading(normalize(assembly.objects), brief);
         assembly.changes.push(...coloured.changes);
-        objects = coloured.objects;
+        // River bridges get their deck and railings before the walking check, so the way across is checked with them.
+        const bridged = finishRiverBridges(normalize(coloured.objects), { allowedRoles: ASSETS.MODE_CONFIG[mode]?.roles });
+        assembly.changes.push(...bridged.changes);
+        const dry = moveNatureOutOfRivers(normalize(bridged.objects), brief);
+        assembly.changes.push(...dry.changes);
+        objects = normalize(dry.objects);
         issues = [...assembly.issues, ...validateStage(objects, false), ...requirementIssues(objects, brief, raw.terrainCompilation)];
         issues.push(...inspectExplicitRoofPalette(objects, request));
         issues.push(...inspectExplicitTerrainDirections(objects,raw.terrainCompilation,request));
