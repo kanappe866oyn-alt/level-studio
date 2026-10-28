@@ -513,8 +513,12 @@ export function movePadsOffRivers(draft) {
       }
     }
     if (!placed) return;
+    // A pad a building stood on was that building's plot. Moved away from the building it stays a plot (the building finds
+    // its own place off the river), and is never taken for an open plaza the request asked for.
+    const plotOf = draft.objects.filter(o => o?.role === 'building' && Array.isArray(o.pos) && Math.abs(o.pos[0] - pad.x) <= pad.width / 2 && Math.abs(o.pos[2] - pad.z) <= pad.depth / 2).map(o => o.id);
+    if (plotOf.length) placed.purpose = 'building';
     next.pads[index] = placed;
-    changes.push({ kind: 'padMovedOffRiver', index, before: pad, after: placed, reason: `平場${index + 1}(${pad.x}, ${pad.z})が川の流路に重なり、水をせき止める盛り土になっていたため、${placed.width !== pad.width || placed.depth !== pad.depth ? `川側を${placed.width}x${placed.depth}mまで縮めた` : `(${placed.x}, ${placed.z})へ川の外まで動かした`}（高さは変更なし）` });
+    changes.push({ kind: 'padMovedOffRiver', index, before: pad, after: placed, reason: `平場${index + 1}(${pad.x}, ${pad.z})が川の流路に重なり、水をせき止める盛り土になっていたため、${placed.width !== pad.width || placed.depth !== pad.depth ? `川側を${placed.width}x${placed.depth}mまで縮めた` : `(${placed.x}, ${placed.z})へ川の外まで動かした${plotOf.length ? `(建物${plotOf.join('、')}の敷地として扱う)` : ''}`}（高さは変更なし）` });
   });
   return changes.length ? { draft: { ...draft, terrainDesign: next }, changes } : { draft, changes: [] };
 }
@@ -540,7 +544,9 @@ export function addRequestedDirectionalPlazas(draft, request) {
     });
   }));
   for (const dir of wanted) {
-    if (next.pads.some(p => [p.x, p.z, p.width, p.depth].every(Number.isFinite) && p.width >= 4 && p.depth >= 4 && p.purpose !== 'building' && onSide(dir, p.x, p.z))) continue;
+    // A pad a building stands on is that building's plot, not an open plaza (the inspection reads it the same way).
+    const builtOn = p => draft.objects.some(o => o?.role === 'building' && Array.isArray(o.pos) && Math.abs(o.pos[0] - p.x) <= p.width / 2 && Math.abs(o.pos[2] - p.z) <= p.depth / 2);
+    if (next.pads.some(p => [p.x, p.z, p.width, p.depth].every(Number.isFinite) && p.width >= 4 && p.depth >= 4 && p.purpose !== 'building' && onSide(dir, p.x, p.z) && !builtOn(p))) continue;
     const spawn = draft.objects.filter(o => o?.role === 'spawn' && Array.isArray(o.pos) && o.pos.every(Number.isFinite) && onSide(dir, o.pos[0], o.pos[2])).sort((u, v) => outward(dir, v.pos[0], v.pos[2]) - outward(dir, u.pos[0], u.pos[2]))[0];
     const ends = next.paths.flatMap(path => Array.isArray(path?.points) && path.points.length >= 2 ? [path.points[0], path.points.at(-1)] : []).filter(q => [q?.x, q?.z, q?.height].every(Number.isFinite) && onSide(dir, q.x, q.z)).sort((u, v) => outward(dir, v.x, v.z) - outward(dir, u.x, u.z));
     const anchor = spawn ? { x: spawn.pos[0], z: spawn.pos[2], source: `入口${spawn.id}` } : ends[0] ? { x: ends[0].x, z: ends[0].z, source: '道の端' } : null;
