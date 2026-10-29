@@ -720,3 +720,89 @@ export function clampTerrainDesignRanges(draft) {
   (next.paths || []).forEach((path, i) => { pull(path, 'width', 'pathWidth', `道${i + 1}`); (path.points || []).forEach(p => pull(p, 'height', 'pathHeight', `道${i + 1}の点`)); });
   return changes.length ? { draft: { ...draft, terrainDesign: next }, changes } : { draft, changes: [] };
 }
+
+// A river the model drew as one straight line reads as a canal. Unless the request asks for a straight channel, it is
+// redrawn as a gentle S-bend between the same two ends (8 points, swinging up to 9% of its length to each side, never more
+// than 8 m), straight where a bridge crosses it so the bridge still spans it. A river the model already bent is left as drawn.
+const STRAIGHT_RIVER_WORDS = /まっすぐ|真っ直ぐ|直線|一直線|水路|運河|用水|堀|canal|straight/i;
+export function meanderStraightRivers(draft, request = '') {
+  const design = draft?.terrainDesign, ground = (Array.isArray(draft?.objects) ? draft.objects : []).find(o => o?.role === 'ground');
+  if (design?.enabled !== true || !Array.isArray(design.rivers) || !design.rivers.length || STRAIGHT_RIVER_WORDS.test(request) || !ground || ![...ground.pos, ...ground.size].every(Number.isFinite)) return { draft, changes: [] };
+  // Only in open nature: along a town's roads, plazas, terraces and buildings the river's line is part of their layout.
+  if ((design.paths || []).length || (design.pads || []).length || (design.terraces || []).length || draft.objects.some(o => ['building', 'wall', 'room', 'platform'].includes(o?.role))) return { draft, changes: [] };
+  const bridges = draft.objects.filter(o => o?.role === 'bridge' && Array.isArray(o.pos) && o.pos.every(Number.isFinite));
+  const [gx, , gz] = ground.pos, halfX = ground.size[0] / 2 - 0.5, halfZ = ground.size[2] / 2 - 0.5;
+  const next = structuredClone(design), changes = [];
+  next.rivers.forEach((river, index) => {
+    const pts = river?.points;
+    if (!Array.isArray(pts) || pts.length < 2 || !pts.every(p => Number.isFinite(p?.x) && Number.isFinite(p?.z)) || !Number.isFinite(river.width)) return;
+    const a = pts[0], b = pts.at(-1), length = Math.hypot(b.x - a.x, b.z - a.z);
+    if (length < 20) return;
+    const dir = [(b.x - a.x) / length, (b.z - a.z) / length], normal = [-dir[1], dir[0]];
+    const lateral = p => (p.x - a.x) * normal[0] + (p.z - a.z) * normal[1];
+    if (Math.max(...pts.map(p => Math.abs(lateral(p)))) > river.width) return;
+    const amplitude = Math.min(8, length * 0.09);
+    // Where a bridge stands near the line, the bend fades to nothing over about 7 m on each side.
+    const crossings = bridges.map(o => ({ t: ((o.pos[0] - a.x) * dir[0] + (o.pos[2] - a.z) * dir[1]) / length, off: Math.abs((o.pos[0] - a.x) * normal[0] + (o.pos[2] - a.z) * normal[1]) }))
+      .filter(c => c.t > 0 && c.t < 1 && c.off < river.width / 2 + 6);
+    const points = Array.from({ length: 8 }, (_, i) => {
+      const t = i / 7, envelope = crossings.reduce((e, c) => e * (1 - Math.exp(-((((t - c.t) * length) / 7) ** 2))), 1);
+      const offset = amplitude * Math.sin(2 * Math.PI * t) * envelope;
+      const x = Math.min(gx + halfX, Math.max(gx - halfX, a.x + dir[0] * length * t + normal[0] * offset));
+      const z = Math.min(gz + halfZ, Math.max(gz - halfZ, a.z + dir[1] * length * t + normal[1] * offset));
+      return { x: +x.toFixed(2), z: +z.toFixed(2) };
+    });
+    // The editor draws a river as one winding strip only while it keeps going one way along x or z.
+    const monotonic = key => { const d = points.slice(1).map((p, i) => p[key] - points[i][key]); return d.every(v => v > 0.3) || d.every(v => v < -0.3); };
+    if (!monotonic('x') && !monotonic('z')) return;
+    changes.push({ kind: 'riverMeandered', index, before: pts.map(p => ({ ...p })), after: points, reason: `川${index + 1}が一直線の水路になっていたため、同じ両端の間をゆるやかに蛇行させた(最大${amplitude.toFixed(1)}m${crossings.length ? '、橋の前後はまっすぐのまま' : ''})` });
+    river.points = points;
+  });
+  return changes.length ? { draft: { ...draft, terrainDesign: next }, changes } : { draft, changes: [] };
+}
+
+// A bridge in a wood with no way leading to it stands alone in the trees. When the stage has no roads at all, a footpath
+// (3 m, dirt on grass) is laid through it along its span, winding gently out to the ground's edge on both sides and
+// following the natural ground height; the steps that join roads to bridges then carry it across. A request that
+// says there is no path, or names road counts, is left as drawn.
+const NO_PATH_WORDS = /道(?:は|を)?(?:不要|なし|無し|いらない)|道のない|小道なし/;
+export function addBridgeTrails(draft, request = '', brief = null) {
+  const design = draft?.terrainDesign, objects = Array.isArray(draft?.objects) ? draft.objects : [], ground = objects.find(o => o?.role === 'ground');
+  if (design?.enabled !== true || design.material !== 'grass' || !Array.isArray(design.rivers) || !design.rivers.length || NO_PATH_WORDS.test(request) || !ground || ![...ground.pos, ...ground.size].every(Number.isFinite)) return { draft, changes: [] };
+  if ((brief?.requirements || []).some(r => r.role === 'path')) return { draft, changes: [] };
+  // Only a stage of open nature: where the model laid roads, plazas or terraces, the ways are its own design.
+  const paths = Array.isArray(design.paths) ? design.paths : [];
+  if (paths.length || (design.pads || []).length || (design.terraces || []).length) return { draft, changes: [] };
+  const [gx, , gz] = ground.pos, halfX = ground.size[0] / 2 - 1, halfZ = ground.size[2] / 2 - 1;
+  const inside = (x, z) => Math.abs(x - gx) <= halfX && Math.abs(z - gz) <= halfZ;
+  const next = structuredClone(design), changes = [];
+  next.paths = paths.map(p => p);
+  for (const bridge of objects.filter(o => o?.role === 'bridge' && o.type === 'box' && Array.isArray(o.pos) && Array.isArray(o.size) && [...o.pos, ...o.size].every(Number.isFinite))) {
+    const yaw = bridge.rot?.[1] || 0, alongX = bridge.size[0] >= bridge.size[2], span = Math.max(bridge.size[0], bridge.size[2]);
+    const dir = alongX ? [Math.cos(yaw), -Math.sin(yaw)] : [Math.sin(yaw), Math.cos(yaw)], normal = [-dir[1], dir[0]];
+    const near = next.paths.some(p => (p.points || []).some(q => Math.hypot(q.x - bridge.pos[0], q.z - bridge.pos[2]) < span / 2 + 6));
+    if (near || !inside(bridge.pos[0], bridge.pos[2])) continue;
+    const side = sign => { const pts = [];
+      for (let s = span / 2 + 0.5, k = 0; k < 8; s += 7, k++) {
+        const wiggle = k ? 2.5 * Math.sin(k * 1.1 + sign) : 0;
+        const x = bridge.pos[0] + dir[0] * s * sign + normal[0] * wiggle, z = bridge.pos[2] + dir[1] * s * sign + normal[1] * wiggle;
+        if (!inside(x, z)) { const t = Math.min(...[[x - gx, halfX], [z - gz, halfZ]].map(([d, h]) => d ? Math.abs(h / d) : Infinity)); pts.push({ x: gx + (x - gx) * Math.min(1, t), z: gz + (z - gz) * Math.min(1, t) }); break; }
+        pts.push({ x, z });
+      }
+      return pts; };
+    const before = side(-1).reverse(), after = side(1);
+    if (before.length < 2 || after.length < 2) continue;
+    const points = [...before, ...after].map(p => ({ x: +p.x.toFixed(2), z: +p.z.toFixed(2), height: +sampleTerrainRelief(next, p.x, p.z).toFixed(2) }));
+    if (points.length > 16) continue;
+    // A trail that would run into something solid the model placed (cover, tower, spawn...) is not laid; trees and rocks
+    // are moved off roads by a later step.
+    const hits = o => { if (['ground', 'bridge', 'tree', 'plant', 'rock', 'water', 'landform'].includes(o?.role) || !Array.isArray(o?.pos) || !Array.isArray(o?.size)) return false;
+      const r = Math.max(o.size[0], o.size[2]) / 2 + 2.5;
+      return points.slice(1).some((q, i) => { const pa = points[i], dx = q.x - pa.x, dz = q.z - pa.z, l2 = dx * dx + dz * dz || 1, t = Math.max(0, Math.min(1, ((o.pos[0] - pa.x) * dx + (o.pos[2] - pa.z) * dz) / l2));
+        return Math.hypot(o.pos[0] - pa.x - t * dx, o.pos[2] - pa.z - t * dz) < r; }); };
+    if (objects.some(hits)) continue;
+    next.paths.push({ width: 3, points });
+    changes.push({ kind: 'bridgeTrailAdded', bridge: bridge.id, points, reason: `${bridge.id}へ通じる道がなく、森の中に橋だけが立っていたため、橋を通って両岸から地面の端まで続く幅3mの小道を、地形の高さに沿って加えた` });
+  }
+  return changes.length ? { draft: { ...draft, terrainDesign: next }, changes } : { draft, changes: [] };
+}

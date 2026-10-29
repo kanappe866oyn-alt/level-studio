@@ -1,6 +1,7 @@
 import { getModelDefault } from './modelCatalog.js';
 import ASSETS from '../assets.json' with { type: 'json' };
-import { boxesOverlap, footprintContains, getBounds, getCollisionParts, surfaceTop } from './spatialGeometry.js';
+import { boxesOverlap, footprintContains, getBounds, getCollisionParts, surfaceTop, worldXZ } from './spatialGeometry.js';
+import { sectionOffset } from './riverSurface.js';
 
 // Local landscape dressing for AI-designed terrain. Gemini designs the relief,
 // roads, pads and requested objects; this pass adds the background groves,
@@ -8,9 +9,11 @@ import { boxesOverlap, footprintContains, getBounds, getCollisionParts, surfaceT
 // tokens on. It is deterministic: the same terrain always gets the same result.
 const TERRAIN_ID = '__generated_terrain';
 const prefix = 'dress_';
-const TREES = [1, 2, 3, 4, 5, 6, 8, 11, 12, 9, 10];
-// Green-leaved models; 6 and 8 have red and 11 pink foliage, kept for single accents and never for a wood.
-const GREEN_TREES = [1, 2, 3, 4, 5, 12, 9, 10];
+// 11 and 12 are mushrooms, placed only when a request asks for them, never as background trees.
+const TREES = [1, 2, 3, 4, 5, 6, 8, 9, 10];
+// A wood: leafy broadleaves (2, 5) first, then birch (3) and pines (1, 4). 6 and 8 have red foliage and
+// 9 and 10 are dead birches, kept for single accents in open country and never for a wood.
+const GREEN_TREES = [2, 5, 3, 1, 4];
 const PLANTS = [1, 2, 5, 6, 3, 4];
 const GROUND_RULES = { grass: { trees: 1, plants: 1, rocks: 1 }, rock: { trees: 0.15, plants: 0.3, rocks: 2 },
   paving: { trees: 0.1, plants: 0.2, rocks: 0.2 }, setts: { trees: 0.1, plants: 0.2, rocks: 0.2 }, slate: { trees: 0.1, plants: 0.2, rocks: 0.5 } };
@@ -116,10 +119,35 @@ export function dressGeneratedTerrain({ objects, brief, compilation, mode, norma
     }
   };
 
+  // Riverbanks: groups of stones and bushes along both shores of a winding river, as a river through a wood
+  // has, rather than grass running straight to the water's edge. Bridge landings and paths stay clear as above.
+  const banks = { rocks: 0, plants: 0 };
+  for (const water of waters.filter(w => w.riverProfile && !w.customModelUrl)) {
+    const length = water.size[2], halfWidth = water.size[0] * water.riverProfile.widthRatio / 2;
+    for (let along = -length / 2 + 2; along < length / 2 - 2; along += 2.6) for (const side of [-1, 1]) {
+      if (random() > 0.75 * density) continue;
+      const offset = sectionOffset(water.riverProfile.sections, along / length) * water.size[0];
+      const rock = random() < 0.45, gap = random() * (rock ? 0.8 : 2.2);
+      const variant = rock ? 1 + Math.floor(random() * 2) : [3, 5, 6, 2][Math.floor(random() * 4)], scale = rock ? 0.22 + random() * 0.25 : 0.6 + random() * 0.4, yaw = random() * 6.283;
+      // Stepped out from the water's edge until the whole prop stands on the bank (a slanting river needs more room).
+      let object = null, x, z;
+      for (let out = 0; out <= 4 && !object; out += 0.3) {
+        [x, z] = worldXZ(water, offset + side * (halfWidth + 0.3 + gap + out), along);
+        const candidate = make(rock ? 'rock' : 'plant', variant, scale, x, z, yaw, rock ? 0.12 : 0.04, `bank${accepted.length}`);
+        if (candidate && !inWater(candidate, 0.6)) object = candidate;
+      }
+      if (!object) continue;
+      const box = getBounds(object), radius = Math.max(box.maxX - box.minX, box.maxZ - box.minZ) / 2;
+      const slope = slopeAt(x, z, Math.min(1, radius * 0.4)); if (slope === null || slope > 0.7) continue;
+      if (!clear(object, radius, 0.1)) continue;
+      accepted.push(object); banks[rock ? 'rocks' : 'plants']++;
+    }
+  }
+
   tryPlace('tree', budget.trees * 60, budget.trees, (x, z) => {
     // Woods where the grove field is high, open meadow elsewhere, with a few lone trees.
     if (random() > Math.max(forest ? smoothstep(0.15, 0.5, grove(x, z)) : smoothstep(0.42, 0.72, grove(x, z)), forest ? 0.3 : 0.06)) return null;
-    const scale = 0.55 + random() * 0.4, accents = forest ? GREEN_TREES : TREES, variant = random() < 0.8 ? groveVariants[random() < 0.5 ? 0 : 1] : accents[Math.floor(random() * accents.length)];
+    const scale = forest ? 0.6 + random() * 0.4 : 0.55 + random() * 0.4, accents = forest ? GREEN_TREES : TREES, variant = random() < 0.8 ? groveVariants[random() < 0.5 ? 0 : 1] : accents[Math.floor(random() * accents.length)];
     return { variant, scale, maxSlope: 0.45, sink: 0.05, extra: 0.8 };
   });
   const trees = accepted.filter(o => o.role === 'tree').map(o => o.pos);
@@ -137,8 +165,10 @@ export function dressGeneratedTerrain({ objects, brief, compilation, mode, norma
     return { variant, scale, minSlope: 0.04, maxSlope: 0.3, sink: 0.05, extra: 0.4 };
   });
 
+  // The rock models are near white; left uncoloured they read as snow. Field stones are grey, those by water mossier.
+  for (const o of accepted) if (o.role === 'rock') o.color = String(o.id).includes('bank') ? '#7d8274' : '#8e8a80';
   if (!accepted.length) return { objects, dressing: null };
   const known = new Set(objects.map(o => o.id));
   const additions = normalize ? normalize([...objects, ...accepted]).filter(o => !known.has(o.id)) : accepted;
-  return { objects: [...objects, ...additions], dressing: { version: 1, seed, ...stats, ...(forest ? { forest: true } : {}), scope: '指示で個数を指定していない木・下草・岩を、傾斜・道・平場・建物・出入口を避けて自動配置' } };
+  return { objects: [...objects, ...additions], dressing: { version: 1, seed, ...stats, ...(banks.rocks + banks.plants ? { riverbank: banks } : {}), ...(forest ? { forest: true } : {}), scope: '指示で個数を指定していない木・下草・岩を、傾斜・道・平場・建物・出入口を避けて自動配置' } };
 }

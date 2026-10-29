@@ -327,7 +327,11 @@ export function moveNatureOutOfRivers(objects, brief = {}) {
 export function finishGenerationSurfaces(objects, brief = {}) {
   const designText = (brief.designGoals || []).map(g => g.description).join(' ');
   const pavedGround = /中庭|石舗装|石畳|舗装広場/.test(designText) && !/草地|森|土の|芝生/.test(designText);
+  // A rock left at the catalogue's near-black default reads as a hole in the grass; it gets natural stone grey
+  // unless the request gives rocks a colour.
+  const rockColour = (brief.requirements || []).some(r => r.role === 'rock' && r.kind === 'color');
   return objects.map(o => {
+    if (o.role === 'rock' && !o.customModelUrl && !rockColour && String(o.color).toLowerCase() === ASSETS.SEMANTIC_PREFABS.rock.color) return { ...o, color: '#8e8a80' };
     if (o.spatialAppearance || o.customModelUrl || o.type !== 'box' || o.bridgeStyle) return o;
     const surface = { ground: pavedGround ? 'paving' : null, wall: 'stucco', platform: 'paving', corridor: 'paving', bridge: 'paving', climb: 'concrete' }[o.role];
     if (!surface) return o;

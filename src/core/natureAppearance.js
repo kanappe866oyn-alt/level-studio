@@ -232,7 +232,13 @@ export function terrainLandscapeColors(data, object) {
       color.multiplyScalar(0.93 + patches * 0.1);
       const pathWeight=object.terrainProfile.surfaceGrid?.pathWeights?.[k] || 0;
       color.lerp(new Color('#b6a080'),pathWeight*.88);
-    } else color = rock.clone().multiplyScalar(0.88 + 0.08 * Math.sin(wx * 0.2 + wz * 0.13 + seed) ** 2);
+    } else {
+      // The outer wall is a cut through the ground: a band of soil under the turf, stone below it. Lifted a little, as
+      // the wall faces sideways and is always in shade.
+      const t = (y + object.size[1] / 2) / object.size[1];
+      color = rock.clone().lerp(new Color('#9a948a'), 0.35).lerp(new Color('#7a5a3c'), smooth(0.55, 0.85, t))
+        .multiplyScalar(1.12 + 0.08 * Math.sin(wx * 0.2 + wz * 0.13 + seed) ** 2);
+    }
     colors.push(color.r, color.g, color.b);
   }
   return colors;

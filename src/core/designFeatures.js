@@ -168,7 +168,19 @@ export function expandDesignFeatures(draft) {
       const lo = ordered[0][axis], hi = ordered.at(-1)[axis], length = hi - lo, midAlong = (lo + hi) / 2;
       const laterals = ordered.map(p => p[lateralKey]), centreLateral = (Math.min(...laterals) + Math.max(...laterals)) / 2, deviation = Math.max(...laterals.map(v => Math.abs(v - centreLateral)));
       const boxWidth = +Math.max(width * 1.2, 2 * deviation + width + 0.5).toFixed(2), sign = axis === 'z' ? 1 : -1;
-      const sections = ordered.map((p, i) => [i === 0 ? -0.5 : i === ordered.length - 1 ? 0.5 : +((p[axis] - midAlong) / length).toFixed(4), +(sign * (p[lateralKey] - centreLateral) / boxWidth).toFixed(4)]);
+      let sections = ordered.map((p, i) => [i === 0 ? -0.5 : i === ordered.length - 1 ? 0.5 : +((p[axis] - midAlong) / length).toFixed(4), +(sign * (p[lateralKey] - centreLateral) / boxWidth).toFixed(4)]);
+      // Three or more points are joined by a smooth curve (Catmull-Rom, 6 steps a segment) instead of straight runs with
+      // sharp corners; kept only while it stays in order along the river and inside its box.
+      if (sections.length >= 3) {
+        const at = i => sections[Math.max(0, Math.min(sections.length - 1, i))], smooth = [];
+        for (let i = 0; i < sections.length - 1; i++) for (let k = 0; k < 6; k++) {
+          const t = k / 6, [p0, p1, p2, p3] = [at(i - 1), at(i), at(i + 1), at(i + 2)];
+          smooth.push([0, 1].map(j => 0.5 * (2 * p1[j] + (-p0[j] + p2[j]) * t + (2 * p0[j] - 5 * p1[j] + 4 * p2[j] - p3[j]) * t * t + (-p0[j] + 3 * p1[j] - 3 * p2[j] + p3[j]) * t * t * t)));
+        }
+        smooth.push([...sections.at(-1)]);
+        const ratio = width / boxWidth;
+        if (smooth.length <= 65 && smooth.every((p, i) => !i || p[0] > smooth[i - 1][0]) && smooth.every(p => Math.abs(p[1]) + ratio / 2 <= 0.5)) sections = smooth.map(([u, v]) => [+u.toFixed(4), +v.toFixed(4)]);
+      }
       objects.push({ id: fresh(`river_${index + 1}`), name: '川', role: 'water', type: 'box', variant: 1, material: 0, color: '#1f6fa8', designFeature: 'river',
         pos: axis === 'z' ? [+centreLateral.toFixed(2), +(level - 0.15).toFixed(2), +midAlong.toFixed(2)] : [+midAlong.toFixed(2), +(level - 0.15).toFixed(2), +centreLateral.toFixed(2)],
         size: [boxWidth, 0.3, +length.toFixed(2)], rot: [0, axis === 'z' ? 0 : +(Math.PI / 2).toFixed(4), 0], riverProfile: { widthRatio: +(width / boxWidth).toFixed(4), sections } });

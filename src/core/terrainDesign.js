@@ -163,10 +163,11 @@ export function compileTerrainDesign(input) {
     if(active.length){const weight=Math.max(...active.map(p=>p.weight)),target=active.reduce((s,p)=>s+p.height*p.weight,0)/active.reduce((s,p)=>s+p.weight,0);y+=(target-y)*weight;}
     // A river the model placed is a channel, not a surface laid over whatever the relief and the
     // flat ground around a road end left there: the bed is cut below the water, with banks that
-    // rise gently. A road or a plaza keeps its own height where the ground is held flat for it (a ford stays a ford); only the rest is cut.
+    // rise gently over about 4 m, a sloping shore rather than a canal wall (2 m where a road or plaza holds the ground). A road or a plaza keeps its own height where the ground is held flat for it (a ford stays a ford); only the rest is cut.
     if(waters.length&&!constraints.some(c=>c.weight>=1-1e-8))for(const w of waters){
       const top=w.pos[1]+w.size[1]/2;
-      const allowed=footprintContains(w,x,z)?top-.9:footprintContains(w,x,z,-1)?top+.15:footprintContains(w,x,z,-2)?top+.9:Infinity;
+      const free=!constraints.some(c=>c.weight>.01);
+      const allowed=footprintContains(w,x,z)?top-.9:free?(footprintContains(w,x,z,-1)?top+.12:footprintContains(w,x,z,-2.5)?top+.5:footprintContains(w,x,z,-4)?top+1:Infinity):footprintContains(w,x,z,-1)?top+.15:footprintContains(w,x,z,-2)?top+.9:Infinity;
       if(y>allowed)y=Math.max(-7.9,allowed);
     }
     finite(y,-8,35,'合成地形の標高'); heights.push(y);pathWeights.push(pathWeight);
